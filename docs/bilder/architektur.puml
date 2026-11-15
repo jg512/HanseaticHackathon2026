@@ -1,0 +1,96 @@
+@startuml architektur
+' Rendern ohne Graphviz:  java -jar plantuml.jar -tpng architektur.puml
+!pragma layout smetana
+skinparam dpi 150
+skinparam shadowing false
+skinparam defaultFontName DejaVu Sans
+skinparam defaultFontSize 13
+skinparam ArrowColor #555555
+skinparam ArrowFontSize 11
+skinparam componentStyle uml2
+skinparam roundCorner 8
+skinparam node {
+  BackgroundColor #FFFFFF
+  BorderColor #466E1F
+}
+skinparam component {
+  BackgroundColor #EEF5E4
+  BorderColor #75AA3B
+}
+skinparam database {
+  BackgroundColor #FFFFFF
+  BorderColor #466E1F
+}
+skinparam cloud {
+  BackgroundColor #F8F9FA
+  BorderColor #5F666D
+}
+skinparam frame {
+  BorderColor #9AA59A
+  FontColor #466E1F
+}
+
+title ATEX Agent: Architektur und Tech-Stack (UML-Verteilungsdiagramm)
+
+actor "Sachbearbeitung" as mensch
+
+node "Browser" as browser {
+  component "Oberfläche\nHTML + JavaScript" as ui
+}
+
+frame "Docker Compose" {
+
+  node "web" <<nginx>> as web
+
+  node "backend" <<Python 3.12 · Flask · SQLAlchemy · gunicorn>> as backend {
+    component "REST-API\nAnmeldung mit Rollen" as api
+    component "Stückliste einlesen\nopenpyxl" as import
+    component "Suche je Position\nDatenbank → eigener Bestand → Internet" as suche
+    component "Vorprüfung\nfeste Regeln: Typ, Zone, Belege" as pruefung
+    component "PDF und Scans lesen\nPyMuPDF · Tesseract (OCR)" as pdf
+    component "Websuche\nPlaywright + Chromium" as websuche
+    component "Sprachmodell-Aufrufe\nLiteLLM" as llm
+    component "Freigabe, E-Mails, Export" as freigabe
+  }
+
+  database "db" <<PostgreSQL 17>> as db
+  node "mail" <<Mailpit>> as mail
+  node "searxng" <<SearXNG>> as searxng
+}
+
+node "search" <<Ähnlichkeitssuche, optional>> as search
+note bottom of search : eigener Dienst,\nnicht in diesem Repository
+
+folder "Ex-Dokumente\neigener Bestand (PDFs)" as ordner
+cloud "Sprachmodell, optional\nein Anbieter über LiteLLM" as modell
+cloud "Webseiten der Hersteller" as internet
+
+mensch --> ui : bedient
+ui --> web : HTTP
+web --> api : /api, /files
+
+api --> import
+api --> suche
+api --> freigabe
+suche --> pdf
+suche --> pruefung
+suche --> websuche
+websuche --> llm
+freigabe --> llm
+
+suche --> db : SQL
+freigabe --> mail : SMTP
+websuche --> searxng : HTTP
+suche ..> search : HTTP
+pdf ..> ordner : liest
+search ..> ordner : liest
+llm ..> modell : HTTPS, nur wenn eingeschaltet
+websuche --> internet : HTTPS
+searxng --> internet : HTTPS
+
+legend bottom
+  **Wo die KI sitzt:** Das Sprachmodell wählt nur Links der Websuche aus und formuliert E-Mails vor. Es gibt nie etwas frei.
+  **Freigabe:** Nachweis aus dem eigenen Bestand ohne Befund: automatisch freigegeben und so markiert. Alles andere entscheidet ein Mensch.
+endlegend
+
+@enduml

@@ -1,0 +1,18 @@
+.env
+__pycache__/
+.pytest_cache/
+.venv/
+*.db
+
+# Sprachmodelle mit echten Schlüsseln; Vorlage: config/modelle.beispiel.yaml
+config/modelle.yaml
+
+# Ex-Dokumente und Stücklisten liegen nicht im Git, siehe data/README.md
+data/ex_dokumente/*
+!data/ex_dokumente/.gitkeep
+data/*.xlsx
+!data/herstellerkontakte_beispiel.xlsx
+data/*.csv
+
+# lokale Werkzeuge
+.claude/

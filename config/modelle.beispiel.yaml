@@ -1,0 +1,71 @@
+# Sprachmodelle des ATEX-Agenten (Vorlage, liegt im Git).
+#
+# Kopieren nach config/modelle.yaml und dort anpassen. config/modelle.yaml liegt NICHT im Git
+# (.gitignore), denn dort stehen echte Zugangsschlüssel. Das Backend liest sie im Container als
+# /config/modelle.yaml (Umgebungsvariable MODELLE_DATEI); ein eigener Suchdienst kann sie mitlesen.
+# Änderungen gelten ohne Neustart: Die Datei wird neu gelesen, sobald sie sich ändert.
+# Fehlt die Datei, gilt ein einziges Modell aus LLM_MODEL, LLM_API_BASE, LLM_API_KEY (.env).
+#
+# Je Modell:
+#   name         frei wählbar, eindeutig; so heißt das Modell in der Oberfläche
+#   art          chat (Text) oder embedding (Vektoren für einen Suchdienst); ohne Angabe: chat
+#   modell       LiteLLM-Schreibweise „anbieter/modell“ (Liste der Anbieter in der Doku von LiteLLM)
+#   api_base     Adresse des Anbieters; weglassen bei Anthropic und OpenAI
+#   api_key      der Schlüssel, in Anführungszeichen; Anbieter ohne Schlüssel: "-"
+#   api_key_env  statt api_key: Name einer Umgebungsvariablen mit dem Schlüssel
+#                (sie muss im Container gesetzt sein, siehe docker-compose.yml)
+#   timeout      Sekunden je Anfrage, ohne Angabe 60
+#
+# Fehler in der Datei (unbekannter Eintrag, doppelter Name, kein Zugang, Standard zeigt auf ein
+# fehlendes Modell …) meldet das Backend beim Start im Log und auf der Seite „Sprachmodelle“.
+# Dann nutzt der Agent KEIN Sprachmodell, nie still ein anderes.
+
+modelle:
+  # Beispiel: OpenAI, Schlüssel aus der Umgebung (OPENAI_API_KEY in .env)
+  - name: beispiel-chat
+    art: chat
+    modell: openai/gpt-4o-mini
+    api_key_env: OPENAI_API_KEY
+    timeout: 60
+
+  # Vektoren, nur für einen eigenen Suchdienst (Ähnlichkeitssuche) nötig
+  - name: beispiel-embedding
+    art: embedding
+    modell: openai/text-embedding-3-small
+    api_key_env: OPENAI_API_KEY
+
+  # Claude (Anthropic)
+  # - name: claude-sonnet
+  #   art: chat
+  #   modell: anthropic/claude-sonnet-5-5
+  #   api_key: "DEIN-SCHLUESSEL"
+  # - name: claude-haiku
+  #   art: chat
+  #   modell: anthropic/claude-haiku-5-5
+  #   api_key_env: ANTHROPIC_API_KEY      # Schlüssel aus der Umgebung statt aus der Datei
+  #   timeout: 30
+
+  # Ein anderer OpenAI-kompatibler Anbieter mit eigener Adresse
+  # - name: eigener-anbieter
+  #   art: chat
+  #   modell: openai/<modellname>
+  #   api_base: https://llm.example/v1
+  #   api_key: "-"                         # "-" = Anbieter braucht keinen Schlüssel
+
+  # Lokal mit Ollama (docker compose --profile ollama up; Modell einmal laden:
+  # docker compose --profile ollama exec ollama ollama pull llama3.1:8b)
+  # - name: ollama-llama
+  #   art: chat
+  #   modell: ollama/llama3.1:8b
+  #   api_base: http://ollama:11434
+  #   api_key: "-"
+  #   timeout: 120
+
+# Welches Modell eine Aufgabe nimmt, solange für einen Vorgang keines gewählt ist.
+# Fehlt eine Zeile, gilt das erste Modell der passenden Art aus der Liste oben.
+# Ob überhaupt ein Modell gefragt wird, schalten INTERNET_LLM und EMAIL_MIT_LLM in .env.
+standard:
+  websuche: beispiel-chat            # Websuche: wählt Links auf der Herstellerseite (INTERNET_LLM=1)
+  email: beispiel-chat               # Einleitung der E-Mail-Entwürfe (EMAIL_MIT_LLM=1)
+  rag_antwort: beispiel-chat         # eigener Suchdienst: Antwort aus den Fundstellen
+  rag_embedding: beispiel-embedding  # eigener Suchdienst: Vektoren für die Ähnlichkeitssuche

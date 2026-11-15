@@ -1,0 +1,2162 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ATEX Agent</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%23282828'/%3E%3Ctext x='16' y='23' text-anchor='middle' font-family='sans-serif' font-size='19' font-weight='800' fill='%23fff'%3EA%3C/text%3E%3C/svg%3E">
+<!--
+  Oberflaeche fuer den Zertifikats-Agenten. Eine Datei, kein Build.
+  Spricht mit dem Backend ueber /api/... (Vertrag in docs/api.md, Abschnitt "Vertrag der Oberfläche").
+  Ausgeliefert vom Dienst "web" (nginx, web/nginx.conf), der /api/ und /files/ an das Backend reicht.
+  Gestaltung nach dem Entwurf aus dem Team, angepasst: Texte ohne Attrappe, eigene Farben.
+  Gestaltung angelehnt an die Admin-Dashboard-Vorlage des Teams (Seitenleiste,
+  Kennzahl-Karten, Diagramme, Ereignis-Spalte rechts).
+-->
+<style>
+/* Formen nach dem Entwurf aus dem Team, Farben und Kontraste in web/README.md. Limette und
+   Marken-Grün sind auf Weiß zu hell für Text. */
+:root {
+  --limette: #bbd03d; --limette-hover: #c5d75a; --limette-hell: #fafde7;
+  --gruen-marke: #75aa3b;
+  --gruen: #466e1f; --gruen-hell: #eef5e4; --gruen-mittel: #e4efd9;
+  --dunkel: #282828;
+  --text: #212529; --grau: #5f666d; --linie: #dee2e6; --flaeche: #f8f9fa; --weiss: #fff;
+  --rot: #b3261e; --rot-hell: #fbe9e7; --gelb: #8a6100; --gelb-hell: #fff4d6;
+  --blau: #1a5fb4; --blau-hell: #e6effa; --orange: #a14a00; --orange-hell: #ffeedd;
+  --radius: 10px;
+  --schatten: 0 1px 2px rgba(20, 30, 25, .05), 0 4px 14px rgba(20, 30, 25, .05);
+}
+* { box-sizing: border-box; }
+body { margin: 0; font: 14px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; color: var(--text); background: var(--flaeche); }
+h1 { font-size: 21px; margin: 0 0 4px; }
+h2 { font-size: 15px; margin: 0 0 12px; }
+.grau { color: var(--grau); }
+a { color: var(--gruen); }
+
+/* ---------- app-geruest: seitenleiste + topbar ---------- */
+.app { display: grid; grid-template-columns: 232px minmax(0, 1fr); min-height: 100vh; }
+aside.leiste { background: var(--weiss); border-right: 1px solid var(--linie); padding: 18px 12px 170px; position: sticky; top: 0; height: 100vh; overflow-y: auto; }
+.logo { display: flex; align-items: center; gap: 11px; padding: 6px 8px 14px; border-bottom: 1px solid var(--linie); margin-bottom: 12px; text-decoration: none; color: inherit; }
+/* Bildzeichen: schlichtes Buchstabenzeichen „A“, rechts daneben der Name */
+.logo .marke { display: block; width: 38px; height: 38px; flex: none; }
+.logo .name { font-weight: 800; font-size: 17px; line-height: 1.1; letter-spacing: .06em; white-space: nowrap; }
+.logo .name span { font-weight: 500; color: var(--gruen); margin-left: .32em; letter-spacing: .02em; }
+/* ---------- ablauf auf der uebersicht: links agent, rechts mensch, schritte an einer mittellinie ---------- */
+.ablauf { position: relative; display: flex; flex-direction: column; gap: 9px; }
+.ablauf::before { content: ""; position: absolute; left: calc(50% - 1px); top: 30px; bottom: 16px; width: 2px; background: var(--linie); }
+.ab-kopf { display: flex; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--grau); }
+.ab-kopf span { flex: 1; display: flex; align-items: center; justify-content: center; gap: 6px; }
+.ab-kopf span:last-child { color: var(--gruen); }
+.ab { position: relative; width: calc(50% - 22px); border: 1px solid var(--linie); border-radius: 10px; padding: 7px 10px; background: var(--weiss); font-size: 12.5px; line-height: 1.3; }
+.ab b { display: block; font-weight: 600; }
+.ab small { display: block; color: var(--grau); font-size: 11.5px; }
+.ab.agent { align-self: flex-start; }
+.ab.mensch { align-self: flex-end; background: var(--limette-hell); border-color: var(--limette); }
+/* strich zur mittellinie und die nummer darauf */
+.ab::after { content: ""; position: absolute; top: calc(50% - 1px); width: 13px; height: 2px; background: var(--linie); }
+.ab.agent::after { right: -14px; }
+.ab.mensch::after { left: -14px; background: var(--limette); }
+.ab::before { content: attr(data-nr); position: absolute; top: calc(50% - 9px); width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center; font-size: 10.5px; font-weight: 700; z-index: 1; background: var(--weiss); border: 2px solid var(--linie); color: var(--grau); box-sizing: border-box; }
+.ab.agent::before { right: -31px; }
+.ab.mensch::before { left: -31px; background: var(--limette); border-color: var(--limette); color: var(--text); }
+.ab .rueck { display: inline-block; margin-top: 5px; padding: 1px 7px; border: 1px dashed var(--grau); border-radius: 99px; font-size: 11px; color: var(--grau); }
+.nav a { display: flex; align-items: center; gap: 10px; padding: 9px 10px; border-radius: 8px; color: var(--text); text-decoration: none; font-weight: 500; margin-bottom: 2px; }
+.nav a svg { flex: none; color: var(--grau); }
+.nav a:hover { background: var(--flaeche); color: var(--text); }
+.nav a.an { background: var(--limette-hell); color: var(--text); font-weight: 600; }
+.nav .gruppe { font-size: 11px; font-weight: 700; color: var(--grau); text-transform: uppercase; letter-spacing: .05em; padding: 14px 10px 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.nav .zahl { margin-left: auto; background: var(--orange-hell); color: var(--orange); border-radius: 99px; padding: 0 7px; font-size: 11px; font-weight: 700; }
+.leiste .unten { position: absolute; bottom: 10px; left: 12px; right: 12px; }
+.profil { display: flex; align-items: center; gap: 10px; padding: 10px; border-top: 1px solid var(--linie); }
+.profil .avatar { width: 34px; height: 34px; border-radius: 50%; background: var(--limette); color: var(--text); font-weight: 700; display: grid; place-items: center; font-size: 13.5px; flex: none; }
+.profil .wer { font-size: 13px; font-weight: 600; line-height: 1.25; }
+.profil .rolle { font-size: 11.5px; color: var(--grau); font-weight: 400; }
+
+/* ---------- anmeldung: login-seite, profil, konto (eigener block) ---------- */
+body.startet .app, body.startet .anmeldung { visibility: hidden; }
+body.abgemeldet .app { display: none; }
+.anmeldung { min-height: 100vh; display: grid; place-items: center; padding: 24px 16px; }
+.anmeldung[hidden] { display: none; }
+.anmelde-karte { width: 100%; max-width: 380px; background: var(--weiss); border: 1px solid var(--linie); border-radius: 12px; padding: 26px 26px 22px; box-shadow: var(--schatten); }
+.anmelde-karte .logo { padding: 0 0 16px; margin-bottom: 18px; }
+/* Anmeldeseite: Bildzeichen etwas größer, der Name rechts daneben */
+.anmelde-karte .logo .marke { width: 44px; height: 44px; }
+.anmelde-karte .logo .name { font-size: 18px; line-height: 44px; }
+.anmelde-karte h1 { margin-bottom: 2px; }
+.anmelde-karte button[type=submit] { width: 100%; margin-top: 16px; padding: 9px 14px; font-weight: 600; }
+.anmelde-karte .fehler { min-height: 18px; margin-top: 10px; font-size: 13px; color: var(--rot); font-weight: 600; }
+.anmelde-karte .fuss { font-size: 12px; color: var(--grau); text-align: center; margin: 14px 0 0; }
+input[type=password] { font: inherit; width: 100%; padding: 7px 9px; border: 1px solid #cfd4d1; border-radius: 8px; background: #fff; }
+.profil .wer, .profil .rolle { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.profil > div:nth-child(2) { min-width: 0; flex: 1; }
+.profil .avatar svg { display: block; }
+.profil .abmelden { flex: none; padding: 4px 6px; }
+.konto-feld { display: grid; grid-template-columns: 130px 1fr; gap: 6px 10px; padding: 6px 0; font-size: 13.5px; }
+.konto-feld .grau { font-size: 12.5px; }
+
+.hauptbereich { display: flex; flex-direction: column; min-width: 0; }
+.topbar { background: var(--weiss); border-bottom: 1px solid var(--linie); padding: 10px 24px; display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 5; }
+.topbar .suche { position: relative; width: 300px; max-width: 40vw; }
+.topbar .suche input { width: 100%; padding: 8px 12px 8px 34px; border: 1px solid var(--linie); border-radius: 99px; background: var(--flaeche); font: inherit; }
+.topbar .suche svg { position: absolute; left: 11px; top: 9px; color: var(--grau); }
+.topbar .rechts { margin-left: auto; display: flex; align-items: center; gap: 12px; }
+/* ganze Breite auf jeder Seite: kein leerer Rand rechts neben Tabellen */
+main { padding: 22px 24px; width: 100%; }
+
+/* ---------- bausteine ---------- */
+.karte { background: var(--weiss); border: 1px solid var(--linie); border-radius: 12px; padding: 18px; margin-bottom: 16px; box-shadow: var(--schatten); }
+button, .knopf { font: inherit; border: 1px solid var(--limette); background: var(--limette); color: var(--text); padding: 7px 14px; border-radius: 8px; cursor: pointer; text-decoration: none; display: inline-block; }
+button.leise, .knopf.leise { background: #fff; color: var(--dunkel); border-color: var(--dunkel); }
+button.gefahr { background: #fff; color: var(--rot); border-color: var(--rot); }
+button.icon { background: none; border: none; color: var(--grau); padding: 2px 6px; font-size: 15px; line-height: 1; }
+button.icon:hover { color: var(--gruen); background: none; }
+button:disabled, .knopf.aus { opacity: .45; cursor: not-allowed; pointer-events: none; }
+input[type=text], input[type=email], textarea { font: inherit; width: 100%; padding: 7px 9px; border: 1px solid #cfd4d1; border-radius: 8px; background: #fff; }
+textarea { min-height: 170px; resize: vertical; }
+label { font-size: 12px; color: var(--grau); display: block; margin: 8px 0 3px; }
+table { width: 100%; border-collapse: collapse; }
+th { text-align: left; font-size: 12px; font-weight: 600; color: var(--grau); padding: 8px 10px; border-bottom: 1px solid var(--linie); white-space: nowrap; }
+td { padding: 10px; border-bottom: 1px solid var(--linie); vertical-align: top; }
+tbody tr:last-child td { border-bottom: none; }
+tbody tr.klick { cursor: pointer; }
+tbody tr.klick:hover { background: var(--limette-hell); }
+tr.korrektur td { background: var(--gelb-hell); }
+tr.korrektur input { padding: 4px 6px; font-size: 13px; }
+body.kompakt td { padding: 5px 8px; }
+body.kompakt th { padding: 6px 8px; }
+.mono { font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 13px; }
+.chip { display: inline-block; padding: 2px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.s-kein_ex { background: #eef0f2; color: var(--grau); }
+.s-wartet { background: #eef0f2; color: #343a40; }
+.s-info_fehlt, .s-eskaliert { background: var(--rot-hell); color: var(--rot); }
+.s-suche { background: var(--blau-hell); color: var(--blau); }
+.s-zu_pruefen { background: var(--gelb-hell); color: var(--gelb); }
+.s-geprueft, .s-in_db { background: var(--gruen-mittel); color: var(--gruen); }
+.s-mail_entwurf, .s-angefordert, .s-erinnert { background: var(--orange-hell); color: var(--orange); }
+.punkt { display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: currentColor; margin-right: 6px; animation: puls 1s infinite; }
+@keyframes puls { 50% { opacity: .25; } }
+.raster { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.ablage { border: 2px dashed var(--gruen-mittel); border-radius: 10px; padding: 26px; text-align: center; background: var(--limette-hell); cursor: pointer; }
+.ablage.drueber { border-color: var(--gruen); background: var(--gruen-mittel); }
+.leiste-balken { height: 8px; border-radius: 4px; background: #e9ecef; overflow: hidden; display: flex; margin-top: 6px; }
+.leiste-balken span { display: block; height: 100%; }
+
+/* kennzahl-karten wie in der vorlage */
+.statkarten { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin-bottom: 16px; }
+.statkarte { background: var(--weiss); border: 1px solid var(--linie); border-radius: 12px; padding: 16px 18px; box-shadow: var(--schatten); display: flex; justify-content: space-between; align-items: center; gap: 10px; }
+.statkarte.klick { cursor: pointer; }
+.statkarte.klick:hover { border-color: var(--limette); }
+.statkarte .label { font-size: 12.5px; color: var(--grau); margin-bottom: 6px; }
+.statkarte .wert { font-size: 24px; font-weight: 700; line-height: 1; }
+.blase { width: 42px; height: 42px; border-radius: 50%; display: grid; place-items: center; flex: none; }
+.blase.gruen { background: var(--gruen-hell); color: var(--gruen); }
+.blase.gelb { background: var(--gelb-hell); color: var(--gelb); }
+.blase.blau { background: var(--blau-hell); color: var(--blau); }
+.blase.orange { background: var(--orange-hell); color: var(--orange); }
+.blase.rot { background: var(--rot-hell); color: var(--rot); }
+
+/* diagramme auf der uebersicht */
+.donut-halter { position: relative; width: 190px; margin: 6px auto 0; }
+.donut-halter .mitte { position: absolute; inset: 0; display: grid; place-items: center; text-align: center; }
+.donut-halter .mitte .zahl { font-size: 26px; font-weight: 700; line-height: 1.1; }
+.donut-halter .mitte .was { font-size: 11.5px; color: var(--grau); }
+
+/* jahres-auswahl auf der projekte-seite */
+.jahres-raster { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 14px; }
+.jahr-karte { background: var(--weiss); border: 1px solid var(--linie); border-radius: 12px; padding: 20px; box-shadow: var(--schatten); cursor: pointer; }
+.jahr-karte:hover { border-color: var(--limette); background: var(--limette-hell); }
+.jahr-karte .jahr { font-size: 26px; font-weight: 700; }
+
+.schritte { display: flex; gap: 0; margin: 4px 0 16px; }
+.schritt { flex: 1; text-align: center; font-size: 12px; color: var(--grau); position: relative; padding-top: 22px; }
+.schritt::before { content: ""; position: absolute; top: 8px; left: 0; right: 0; height: 3px; background: var(--linie); }
+.schritt .n { position: absolute; top: 0; left: 50%; transform: translateX(-50%); width: 19px; height: 19px; border-radius: 50%; background: #fff; border: 2px solid var(--linie); font-size: 11px; line-height: 15px; color: var(--grau); z-index: 1; }
+.schritt.fertig::before, .schritt.jetzt::before { background: var(--gruen); }
+.schritt.fertig .n { background: var(--gruen); border-color: var(--gruen); color: #fff; }
+.schritt.jetzt .n { border-color: var(--limette); color: var(--text); font-weight: 700; background: var(--limette); }
+.schritt.jetzt { color: var(--text); font-weight: 600; }
+
+.kopfzeile { display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
+.kopfzeile .rechts { margin-left: auto; display: flex; gap: 8px; align-items: center; }
+.filter { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+.filter button { background: #fff; color: var(--text); border: 1px solid var(--linie); padding: 3px 11px; border-radius: 99px; font-size: 12px; }
+.filter button.an { border-color: var(--limette); background: var(--limette-hell); color: var(--text); }
+.mailfilter { flex-wrap: nowrap; overflow-x: auto; margin-bottom: 10px; }
+.mailfilter button { white-space: nowrap; flex: none; padding: 4px 14px; font-size: 13px; }
+.sprachwahl label { display: flex; align-items: center; gap: 8px; margin: 8px 0; font-size: 14px; cursor: pointer; }
+.sprachwahl input { width: 17px; height: 17px; }
+.hinweis { border-radius: 10px; padding: 12px 14px; margin-bottom: 14px; }
+.hinweis.rot { background: var(--rot-hell); color: #5c120d; }
+.hinweis.gruen { background: var(--gruen-hell); color: var(--gruen); }
+.feld { display: grid; grid-template-columns: 130px 1fr; gap: 6px 10px; padding: 7px 0; border-bottom: 1px solid var(--linie); }
+.feld:last-child { border-bottom: none; }
+.beleg { font-size: 12px; color: var(--grau); }
+.unbelegt { font-size: 12px; color: var(--rot); font-weight: 600; }
+.fund { border: 1px solid var(--linie); border-radius: 10px; padding: 12px; margin-bottom: 12px; background: #fff; }
+.fund.gewaehlt { border-color: var(--gruen-marke); box-shadow: 0 0 0 2px var(--gruen-mittel); }
+.fund.zu { padding: 8px 12px; margin-bottom: 8px; }
+.fund-kopf { display: flex; align-items: center; gap: 10px; cursor: pointer; border-radius: 6px; }
+.fund:not(.zu) > .fund-kopf { margin-bottom: 10px; }
+.fund-kopf:focus-visible { outline: 2px solid var(--gruen); outline-offset: 3px; }
+.fund-pfeil { color: var(--grau); width: 12px; flex: none; }
+.fund-haken { width: 18px; height: 18px; flex: none; cursor: pointer; accent-color: var(--gruen); }
+.fund-name { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 1px; }
+.fund-name strong { font-size: 12.5px; overflow-wrap: anywhere; }
+.fund-name .grau { font-size: 12px; }
+.fund-marke { flex: none; display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px; border-radius: 99px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.fund-marke.ok { background: var(--gruen-hell); color: var(--gruen); }
+.fund-marke.warnung { background: var(--rot-hell); color: var(--rot); }
+.fund-marke.unklar { background: var(--gelb-hell); color: var(--gelb); }
+.fund-marke.ohne { background: var(--flaeche); color: var(--grau); }
+.zeile { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+iframe.pdf { width: 100%; height: 560px; border: 1px solid var(--linie); border-radius: 8px; margin-top: 8px; }
+.toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--dunkel); color: #fff; padding: 9px 16px; border-radius: 8px; font-size: 13px; opacity: 0; transition: opacity .2s; pointer-events: none; z-index: 50; }
+.toast.an { opacity: .95; }
+.tabelle { overflow-x: auto; }
+.leer { color: var(--grau); text-align: center; padding: 30px; }
+
+/* Protokoll eines Vorgangs: Blatt von rechts über der Seite, geöffnet mit dem Knopf „Protokoll“;
+   die Positionsliste hat so die ganze Breite */
+.proto-schleier { position: fixed; inset: 0; background: rgba(20, 30, 25, .35); z-index: 55; display: flex; justify-content: flex-end; }
+.proto-schleier[hidden] { display: none; }
+.proto-blatt { background: var(--weiss); width: min(480px, 100%); height: 100%; display: flex; flex-direction: column; padding: 18px 20px; box-shadow: -8px 0 30px rgba(0, 0, 0, .18); }
+.proto-kopf { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.proto-kopf h2 { margin: 0; }
+.proto-blatt .log-scroll { max-height: none; flex: 1; min-height: 0; }
+/* Positionen eines Vorgangs: alle Spalten samt „Öffnen“ ohne seitliches Rollen. Köpfe dürfen
+   umbrechen („Hersteller-⏎Art.-Nr.“), Typen an Bindestrichen, die Abstände sind etwas enger. */
+.pos-liste th { white-space: normal; vertical-align: bottom; }
+.pos-liste th, .pos-liste td { padding-left: 7px; padding-right: 7px; }
+/* lange Wörter mit Trennstrich, wo der Browser trennen kann, zuletzt auch mitten im Wort, statt
+   rechts abzuschneiden */
+.pos-liste td { hyphens: auto; overflow-wrap: anywhere; }
+.pos-liste td.mono { font-size: 12.5px; }
+.pos-liste td:first-child { white-space: nowrap; overflow-wrap: normal; hyphens: none; }
+/* gesperrte Zellen ohne graue Ecke: der Mauszeiger und der Hinweis beim Klick genügen */
+#app .tg table td.tg-z.tg-zu:not(.tg-still) { background-image: none; }
+/* Position: Legende der Markierungen, Entscheidung, Bearbeiten-Dialog */
+.legende { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 12px; color: var(--grau); margin: 0 0 10px; }
+.legende i { display: inline-block; width: 10px; height: 10px; border-radius: 2px; margin-right: 5px; vertical-align: -1px; }
+.entscheid { background: var(--flaeche); border-radius: 10px; padding: 12px 14px; }
+.pos-form { display: grid; grid-template-columns: 1fr 1fr; gap: 10px 14px; margin-top: 10px; }
+.pos-form label { margin: 0 0 3px; }
+.pos-form input { width: 100%; }
+.pos-form .breit { grid-column: 1 / -1; }
+.pos-folgen { background: var(--gelb-hell); color: #5a4000; border-radius: 8px; padding: 8px 12px; margin-top: 12px; font-size: 13px; }
+.pos-folgen[hidden] { display: none; }
+.pos-liste .marke-klein { white-space: normal; }
+.pos-liste .pos-oeffnen { padding: 3px 8px; white-space: nowrap; }
+@media (max-width: 900px) {
+  .pos-liste th, .pos-liste td { padding-left: 4px; padding-right: 4px; }
+  .pos-liste .pos-oeffnen .pfeil { display: none; }
+}
+.ereignis { padding: 8px 6px; border-bottom: 1px solid var(--linie); font-size: 12.5px; border-radius: 6px; }
+.ereignis:last-child { border-bottom: none; }
+.ereignis .zeit { color: var(--grau); font-size: 11.5px; }
+.ereignis.klick { cursor: pointer; }
+.ereignis.klick:hover { background: var(--limette-hell); }
+.log-scroll { max-height: 520px; overflow-y: auto; }
+
+/* e-mail-ansicht wie ein klassisches postfach: links projekte, mitte liste, rechts lesen */
+.post { display: grid; grid-template-columns: 190px 280px minmax(0, 1fr); border: 1px solid var(--linie); border-radius: 12px; background: #fff; overflow: hidden; min-height: 72vh; box-shadow: var(--schatten); }
+.post .ordner { border-right: 1px solid var(--linie); background: var(--flaeche); padding: 8px 0; overflow-y: auto; }
+.post .ordner .titel { font-size: 11px; font-weight: 700; color: var(--grau); text-transform: uppercase; letter-spacing: .04em; padding: 8px 14px 4px; }
+.post .ordner a { display: flex; justify-content: space-between; gap: 8px; padding: 8px 14px; color: var(--text); text-decoration: none; font-size: 13px; }
+.post .ordner a:hover { background: #eef0f2; }
+.post .ordner a.an { background: var(--limette-hell); color: var(--text); font-weight: 600; box-shadow: inset 3px 0 0 var(--gruen); }
+.post .ordner .zahl { background: var(--orange-hell); color: var(--orange); border-radius: 99px; padding: 0 7px; font-size: 11px; font-weight: 700; align-self: center; }
+.post .briefe { border-right: 1px solid var(--linie); overflow-y: auto; }
+.post .brief { padding: 10px 12px; border-bottom: 1px solid var(--linie); cursor: pointer; }
+.post .brief:hover { background: var(--flaeche); }
+.post .brief.an { background: var(--limette-hell); box-shadow: inset 3px 0 0 var(--gruen); }
+.post .brief .betreff { font-weight: 600; font-size: 13px; margin: 2px 0; }
+.post .brief .meta { font-size: 12px; color: var(--grau); }
+.post .lesen { padding: 20px 22px; overflow-y: auto; }
+.post .lesen .kopf { border-bottom: 1px solid var(--linie); padding-bottom: 12px; margin-bottom: 14px; }
+.post .lesen .kopf .feldzeile { display: grid; grid-template-columns: 70px 1fr; gap: 4px 10px; font-size: 13px; padding: 2px 0; }
+.post .lesen pre { white-space: pre-wrap; font: inherit; margin: 0; }
+
+@media (max-width: 1100px) { .statkarten { grid-template-columns: repeat(2, 1fr); } }
+@media (max-width: 1280px) { .post { grid-template-columns: 160px 240px minmax(0, 1fr); } }
+@media (max-width: 900px) {
+  .app { grid-template-columns: 1fr; }
+  aside.leiste { position: static; height: auto; display: flex; align-items: center; gap: 6px; padding: 8px 12px; }
+  .logo { border: none; margin: 0; padding: 0 8px 0 0; } .nav { display: flex; gap: 4px; flex-wrap: wrap; } .nav .gruppe { display: none; }
+  /* schmales Fenster: wer angemeldet ist und „Abmelden“ bleiben sichtbar, rechts in der Kopfzeile */
+  .leiste .unten { position: static; margin-left: auto; }
+  .leiste .unten .profil { border: none; padding: 0 4px; gap: 8px; }
+  .leiste .unten .profil .rolle { display: none; }
+  .raster { grid-template-columns: 1fr; }
+  .post { grid-template-columns: 1fr; min-height: 0; }
+  .post .ordner, .post .briefe { border-right: none; border-bottom: 1px solid var(--linie); max-height: 240px; }
+}
+/* ---------- ergaenzungen zur demo ---------- */
+select { font: inherit; padding: 7px 9px; border: 1px solid #cfd4d1; border-radius: 8px; background: #fff; }
+:focus-visible { outline: 2px solid var(--gruen); outline-offset: 2px; }
+.nav a.an svg { color: var(--gruen); }
+button:hover, .knopf:hover { background: var(--limette-hover); border-color: var(--limette-hover); }
+button.leise:hover, .knopf.leise:hover { background: var(--dunkel); color: #fff; }
+button.gefahr:hover { background: var(--rot-hell); }
+.namehinweis { font-size: 12px; margin-left: 4px; }
+.namehinweis a { color: inherit; font-weight: 600; }
+.filter button:hover { background: var(--flaeche); border-color: #ced4da; }
+.hinweis .grund { font-size: 12.5px; font-weight: 600; margin-top: 2px; }
+/* ---------- projekte: filter und sortierbare spalten (die tabellen selbst: tabelle.js) ---------- */
+.pf-filter { display: flex; gap: 10px 14px; flex-wrap: wrap; align-items: flex-end; margin-bottom: 6px; }
+.pf-filter label { margin: 0 0 3px; }
+.pf-filter .pf-text { flex: 1; min-width: 220px; }
+.pf-filter .pf-datum { font: inherit; padding: 6px 8px; border: 1px solid #cfd4d1; border-radius: 8px; background: #fff; }
+.pf-sort { background: none; border: none; padding: 0; font: inherit; font-size: 12px; font-weight: 600; color: var(--grau); cursor: pointer; }
+.pf-sort:hover, .pf-sort.an { background: none; color: var(--text); }
+.jahr-karte.pf-an { border-color: var(--limette); background: var(--limette-hell); }
+#pf-jahre .jahr-karte { padding: 12px 16px; } #pf-jahre .jahr { font-size: 20px; }
+/* ---------- neuer vorgang: eine schmale karte, eine zeile; datei auch per ziehen und ablegen ---------- */
+.upload { display: flex; align-items: center; gap: 10px 14px; flex-wrap: wrap; padding: 16px 18px; border: 2px dashed var(--gruen-mittel); background: var(--limette-hell); box-shadow: none; }
+.upload.drueber { border-color: var(--gruen); background: var(--gruen-mittel); }
+.upload .upload-text { flex: 0 1 auto; display: flex; flex-direction: column; line-height: 1.3; }
+.upload .upload-text span { font-size: 12.5px; }
+.upload input[type=text] { flex: 1 1 160px; width: auto; min-width: 140px; }
+.upload button { flex: none; }
+.upload .unbelegt { flex-basis: 100%; }
+/* Dateiauswahl (dateiwahl): sichtbar ist der Knopf, das Feld liegt durchsichtig darüber */
+.dateiwahl { display: inline-flex; align-items: center; gap: 6px 10px; flex-wrap: wrap; max-width: 100%; vertical-align: middle; }
+.dateiwahl-knopf { position: relative; overflow: hidden; white-space: nowrap; flex: none; }
+.dateiwahl-knopf input[type=file] { position: absolute; inset: 0; width: 100%; height: 100%; margin: 0; padding: 0; opacity: 0; cursor: pointer; font-size: 0; }
+.dateiwahl-knopf input[type=file]::file-selector-button { cursor: pointer; }
+.dateiwahl-knopf:focus-within { outline: 2px solid var(--gruen); outline-offset: 2px; }
+.dateiwahl-name { font-size: 13px; overflow-wrap: anywhere; min-width: 0; }
+.dateiwahl-name.dateiwahl-leer { color: var(--grau); }
+.upload .unbelegt:empty { display: none; }
+/* ablauf „so läuft es“: aufklappbar, zustand im browser */
+details.ablauf-karte > summary { cursor: pointer; list-style: none; display: flex; align-items: center; gap: 8px; }
+details.ablauf-karte > summary::-webkit-details-marker { display: none; }
+details.ablauf-karte > summary h2 { margin: 0; }
+details.ablauf-karte > summary .grau { font-size: 12.5px; }
+details.ablauf-karte > summary::before { content: "▸"; color: var(--grau); }
+details.ablauf-karte[open] > summary::before { content: "▾"; }
+details.ablauf-karte .ablauf { max-width: 620px; margin-top: 14px; }
+/* ---------- suche oben: trefferliste unter dem feld ---------- */
+.gs-liste { position: absolute; top: calc(100% + 6px); left: 0; width: min(560px, calc(100vw - 32px)); max-height: 70vh; overflow-y: auto; background: var(--weiss); border: 1px solid var(--linie); border-radius: 10px; box-shadow: 0 8px 28px rgba(20, 30, 25, .16); z-index: 20; padding: 6px 0; }
+.gs-liste[hidden] { display: none; }
+.gs-gruppe { font-size: 11px; font-weight: 700; color: var(--grau); text-transform: uppercase; letter-spacing: .05em; padding: 8px 14px 4px; }
+.gs-treffer { display: block; padding: 6px 14px; color: var(--text); text-decoration: none; cursor: pointer; }
+.gs-treffer .t { font-weight: 600; font-size: 13px; }
+.gs-treffer .k { font-size: 12px; color: var(--grau); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gs-treffer.an, .gs-treffer:hover { background: var(--limette-hell); }
+.gs-mehr, .gs-leer, .gs-hinweis { font-size: 12px; color: var(--grau); padding: 4px 14px 6px; }
+.gs-leer { padding: 10px 14px; }
+.gs-fuss { font-size: 11.5px; color: var(--grau); border-top: 1px solid var(--linie); margin-top: 4px; padding: 6px 14px 2px; }
+.topbar .suche kbd { position: absolute; right: 10px; top: 8px; font: 11px/1 ui-monospace, monospace; color: var(--grau); border: 1px solid var(--linie); border-radius: 4px; padding: 3px 5px; background: var(--weiss); }
+.topbar .suche input:focus + kbd { display: none; }
+/* hinweise zu e-mail-adresse und deutscher fassung */
+.marke-klein { display: inline-block; margin: 3px 4px 0 0; padding: 0 7px; border-radius: 99px; font-size: 11px; font-weight: 600; background: var(--rot-hell); color: var(--rot); white-space: nowrap; }
+.marke-klein.auto { background: var(--blau-hell); color: var(--blau); }
+.hinweis.gelb { background: var(--gelb-hell); color: #5a4000; }
+.hinweis ul { margin: 4px 0 0; padding-left: 18px; }
+.post .brief .marke-klein { float: none; }
+/* ---------- ruhige seiten: eine hauptsache, der rest einen klick entfernt ---------- */
+/* übersicht: stand aller positionen als eine schmale zeile; „so läuft es“ nicht über die ganze breite */
+.standzeile { display: flex; align-items: center; gap: 18px; padding: 12px 18px; }
+.standzeile h2 { margin: 0 0 6px; }
+.donut-halter.klein { width: 80px; margin: 0; flex: none; }
+.donut-halter.klein .mitte .zahl { font-size: 17px; }
+.standzahlen { display: flex; flex-wrap: wrap; gap: 4px 16px; font-size: 13px; color: var(--grau); }
+.standzahlen b { color: var(--text); }
+.standzahlen i, .kennzeile i { display: inline-block; width: 9px; height: 9px; border-radius: 3px; margin-right: 5px; }
+details.ablauf-karte { max-width: 760px; }
+/* vorgang: kennzahlen als eine zeile, schrittleiste knapp */
+.kennzeile { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin: 0 0 8px; }
+.kennzeile button { background: #fff; color: var(--text); border: 1px solid var(--linie); padding: 3px 11px; border-radius: 99px; font-size: 12.5px; }
+.kennzeile button:hover { background: var(--flaeche); border-color: #ced4da; }
+.kennzeile button.an { border-color: var(--limette); background: var(--limette-hell); }
+.kennzeile button b { font-weight: 700; }
+.schritte.knapp { margin: 2px 0 10px; }
+.schritte.knapp .schritt { padding-top: 21px; font-size: 11.5px; }
+/* erledigter Schritt, bei dem einzelne Positionen noch offen sind: grüne Linie wie erledigt,
+   statt der Nummer ein Warnzeichen und darunter, wie viele noch offen sind */
+.schritt.rest .n { background: #fff; border-color: var(--orange); color: var(--orange); display: grid; place-items: center; }
+.schritt.rest { color: var(--text); }
+.schritt-warn { display: block; color: var(--orange); font-weight: 600; font-size: 11px; }
+.schritt-neben { font-size: 12.5px; margin: -4px 0 10px; }
+.schritt-neben button { background: none; border: none; padding: 0; color: var(--orange); font: inherit; font-weight: 600; text-decoration: underline; cursor: pointer; }
+/* knappe hinweise: eine zeile mit zahl und „anzeigen“, einzelheiten nach dem klick */
+details.hinweis.knapp { padding: 8px 14px; margin-bottom: 8px; }
+details.hinweis.knapp > summary { cursor: pointer; list-style: none; display: flex; gap: 8px; align-items: baseline; flex-wrap: wrap; }
+details.hinweis.knapp > summary::-webkit-details-marker { display: none; }
+details.hinweis.knapp > summary .anzeigen { margin-left: auto; font-size: 12.5px; font-weight: 600; text-decoration: underline; white-space: nowrap; }
+details.hinweis.knapp[open] > summary .anzeigen::after { content: " ▴"; }
+details.hinweis.knapp:not([open]) > summary .anzeigen::after { content: " ▾"; }
+details.hinweis.knapp[open] > summary { margin-bottom: 8px; }
+/* protokoll: je position eine zeile, die suchschritte auf klick */
+.ereignis .schritte-knopf { display: block; background: none; border: none; padding: 0; margin-top: 2px; font-size: 11.5px; color: var(--grau); text-decoration: underline; cursor: pointer; }
+.ereignis .schritte-liste { margin: 4px 0 0; padding-left: 14px; color: var(--grau); font-size: 12px; }
+.log-mehr { width: 100%; margin-top: 8px; }
+/* bereich mit teilen unter der tabelle (vorgang) und unter den funden (artikel) */
+.bereich { padding: 14px 18px; }
+.bereich > h2 { margin-bottom: 6px; }
+details.teil { border-top: 1px solid var(--linie); }
+details.teil > summary { cursor: pointer; list-style: none; display: flex; gap: 10px; align-items: center; padding: 10px 2px; font-weight: 600; }
+details.teil > summary::-webkit-details-marker { display: none; }
+details.teil > summary::before { content: "▸"; color: var(--grau); width: 10px; }
+details.teil[open] > summary::before { content: "▾"; }
+details.teil > summary:hover { color: var(--gruen); }
+.teil-marke { font-size: 11.5px; font-weight: 700; border-radius: 99px; padding: 1px 9px; background: var(--gelb-hell); color: var(--gelb); }
+.teil-marke.rot { background: var(--rot-hell); color: var(--rot); }
+.teil-marke[hidden] { display: none; }
+.teil-kurz { font-weight: 400; font-size: 12.5px; color: var(--grau); }
+.teil-inhalt { padding: 0 2px 14px 20px; }
+/* artikel: vorprüfung oben im fund, belege kurz, weitere angaben aufklappbar */
+.fund-pruefung { border-left: 3px solid var(--linie); padding: 7px 10px; margin-bottom: 10px; font-size: 13px; border-radius: 0 6px 6px 0; }
+.fund-pruefung.ok { background: var(--gruen-hell); border-color: var(--gruen-marke); color: var(--gruen); }
+.fund-pruefung.warnung { background: var(--rot-hell); border-color: var(--rot); color: #5c120d; }
+.fund-pruefung.unklar { background: var(--gelb-hell); border-color: var(--gelb); color: #5a4000; }
+.fund-pruefung.ohne { background: var(--flaeche); color: var(--grau); }
+.fund-links { display: flex; gap: 4px 14px; flex-wrap: wrap; font-size: 12.5px; margin-top: 3px; }
+.beleg-knopf { background: none; border: none; padding: 0; font: inherit; font-size: 12px; color: var(--grau); text-align: left; cursor: pointer; max-width: 100%; }
+.beleg-knopf:hover { background: none; color: var(--text); }
+.beleg-knopf .lang, .beleg-knopf.offen .kurz { display: none; }
+.beleg-knopf.offen .lang { display: inline; white-space: normal; }
+.beleg-knopf .kurz { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: inline-block; max-width: 100%; vertical-align: bottom; }
+.abgeleitet { font-size: 12px; color: var(--grau); font-style: italic; }
+details.mehr-angaben { margin-top: 6px; }
+details.mehr-angaben > summary { cursor: pointer; font-size: 13px; font-weight: 600; color: var(--gruen); padding: 4px 0; }
+details.herkunft-zeile { font-size: 12px; color: var(--grau); margin-top: 2px; }
+details.herkunft-zeile > summary { cursor: pointer; }
+details.herkunft-zeile[open] { color: var(--text); }
+@media (max-width: 900px) { .standzeile { flex-wrap: wrap; } .teil-inhalt { padding-left: 4px; } }
+/* wer nur lesen darf, sieht keine Formulare zum Ändern */
+body.leser .nur-schreiben { display: none !important; }
+</style>
+</head>
+<body class="startet">
+<div class="app">
+  <aside class="leiste">
+    <a class="logo" href="#/" title="Zur Übersicht">
+      <svg class="marke" viewBox="0 0 38 38" width="38" height="38" aria-hidden="true"><rect width="38" height="38" rx="8" fill="#282828"/><text x="19" y="26.5" text-anchor="middle" font-family="system-ui, sans-serif" font-size="21" font-weight="800" fill="#fff">A</text></svg>
+      <div class="name">ATEX<span>Agent</span></div>
+    </a>
+    <nav class="nav" id="nav"></nav>
+    <div class="unten">
+      <div class="profil" id="profil"></div>
+    </div>
+  </aside>
+  <div class="hauptbereich">
+    <div class="topbar">
+      <div class="suche">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+        <input type="text" id="suche" placeholder="Vorgang, Position, Typ, Hersteller …" autocomplete="off" spellcheck="false"
+          role="combobox" aria-expanded="false" aria-controls="gs-liste" aria-autocomplete="list" aria-label="In der ganzen Anwendung suchen">
+        <kbd title="Mit „/“ oder Strg+K springen Sie in die Suche.">/</kbd>
+        <div class="gs-liste" id="gs-liste" role="listbox" hidden></div>
+      </div>
+      <div class="rechts">
+        <span class="grau" style="font-size:12.5px" id="api-status"></span>
+      </div>
+    </div>
+    <main id="app"></main>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+<!-- anmeldung: sichtbar, solange niemand angemeldet ist (anmeldungPruefen, abgemeldet) -->
+<div class="anmeldung" id="anmeldung" hidden>
+  <form class="anmelde-karte" id="anmelde-form" novalidate>
+    <div class="logo">
+      <svg class="marke" viewBox="0 0 38 38" width="38" height="38" aria-hidden="true"><rect width="38" height="38" rx="8" fill="#282828"/><text x="19" y="26.5" text-anchor="middle" font-family="system-ui, sans-serif" font-size="21" font-weight="800" fill="#fff">A</text></svg>
+      <div class="name">ATEX<span>Agent</span></div>
+    </div>
+    <h1>Anmelden</h1>
+    <div class="grau" id="anmelde-grund">Bitte melden Sie sich mit Ihrem Zugang an.</div>
+    <label for="an-login">Anmeldename</label>
+    <input type="text" id="an-login" autocomplete="username" autocapitalize="none" spellcheck="false" required>
+    <label for="an-passwort">Passwort</label>
+    <input type="password" id="an-passwort" autocomplete="current-password" required>
+    <div class="fehler" id="an-fehler" role="alert"></div>
+    <button type="submit" id="an-knopf">Anmelden</button>
+    <p class="fuss">Noch keinen Zugang? Den vergibt die Administration.</p>
+  </form>
+</div>
+
+<script src="seiten/tabelle.js"></script>
+<script>
+// ---------- grundlagen ----------
+const API = "";  // gleiche adresse wie die seite; sonst z. B. "http://server:8000"
+
+const STATUS = {
+  kein_ex:      { text: "kein Ex-Teil",      farbe: "#c9cecb" },
+  wartet:       { text: "wartet",            farbe: "#9aa19d" },
+  info_fehlt:   { text: "Angabe fehlt",      farbe: "#b3261e" },
+  suche:        { text: "wird gesucht",      farbe: "#1a5fb4" },
+  zu_pruefen:   { text: "Fund prüfen",       farbe: "#d9a400" },
+  in_db:        { text: "aus der Datenbank",     farbe: "#2e7d4f" },
+  geprueft:     { text: "freigegeben",       farbe: "#1f5c36" },
+  mail_entwurf: { text: "E-Mail-Entwurf",    farbe: "#e07a1f" },
+  angefordert:  { text: "angefordert",       farbe: "#c25e00" },
+  erinnert:     { text: "erinnert",          farbe: "#a14a00" },
+  eskaliert:    { text: "eskaliert",         farbe: "#7f1d17" },
+};
+const DOKUMENTART = {
+  eu_konformitaetserklaerung: "EU-Konformitätserklärung", eu_baumusterpruefbescheinigung: "EU-Baumusterprüfbescheinigung",
+  uk_konformitaetserklaerung: "UK-Konformitätserklärung", uk_baumusterpruefbescheinigung: "UK-Baumusterprüfbescheinigung",
+  bedienungsanleitung: "Bedienungsanleitung", datenblatt: "Datenblatt", sonstiges: "Sonstiges",
+};
+const REIHENFOLGE = ["info_fehlt", "zu_pruefen", "mail_entwurf", "suche", "wartet", "angefordert", "erinnert", "eskaliert", "in_db", "geprueft", "kein_ex"];
+const MAILCHIP = s => s === "entwurf" ? "mail_entwurf" : s === "eskaliert" ? "eskaliert" : s === "erinnert" ? "erinnert" : "angefordert";
+
+// gruppen fuer diagramme und kennzahl-filter; farben mit scripts/validate_palette.js (dataviz) geprueft
+const GRUPPEN = [
+  { schl: "fertig",   text: "Freigegeben",  farbe: "#2e7d4f", stati: ["geprueft", "in_db"] },
+  { schl: "pruefen",  text: "Zu prüfen",    farbe: "#d9a400", stati: ["zu_pruefen"] },
+  { schl: "angaben",  text: "Angabe fehlt", farbe: "#b3261e", stati: ["info_fehlt"] },
+  { schl: "wartet",   text: "Wartet oder wird gesucht", farbe: "#1a5fb4", stati: ["wartet", "suche"] },
+  { schl: "anfragen", text: "Anfragen",     farbe: "#c4501a", stati: ["mail_entwurf", "angefordert", "erinnert", "eskaliert"] },
+  { schl: "kein_ex",  text: "kein Ex-Teil", farbe: "#98a09c", stati: ["kein_ex"] },
+];
+const GRUPPE = Object.fromEntries(GRUPPEN.map(g => [`g-${g.schl}`, g.stati]));
+GRUPPE["g-offen"] = REIHENFOLGE.filter(s => !["kein_ex", "geprueft", "in_db"].includes(s));
+const gruppenWert = (zaehler, g) => g.stati.reduce((s, st) => s + (zaehler[st] || 0), 0);
+
+const ICON = {
+  raster: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>',
+  ordner: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7a2 2 0 0 1 2-2h4l2 2.5h8a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/></svg>',
+  liste:  '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M8 6h13M8 12h13M8 18h13"/><circle cx="4" cy="6" r="1" fill="currentColor"/><circle cx="4" cy="12" r="1" fill="currentColor"/><circle cx="4" cy="18" r="1" fill="currentColor"/></svg>',
+  mail:   '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/></svg>',
+  rad:    '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2.5v3M12 18.5v3M4.3 6.5l2.2 1.6M17.5 15.9l2.2 1.6M2.5 12h3M18.5 12h3M4.3 17.5l2.2-1.6M17.5 8.1l2.2-1.6"/></svg>',
+  haken:  '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="m4.5 12.5 5 5 10-11"/></svg>',
+  auge:   '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M2 12s3.5-6.5 10-6.5S22 12 22 12s-3.5 6.5-10 6.5S2 12 2 12Z"/><circle cx="12" cy="12" r="2.6"/></svg>',
+  teile:  '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3.2"/><path d="M12 2.8v3M12 18.2v3M2.8 12h3M18.2 12h3M5.5 5.5l2.1 2.1M16.4 16.4l2.1 2.1M18.5 5.5l-2.1 2.1M7.6 16.4l-2.1 2.1"/></svg>',
+  offen:  '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><path d="M12 7v5.5l3.5 2"/></svg>',
+  // standard-symbol fuer eine person; profilbilder gibt es nicht
+  person: '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 20.5c0-4 3.6-6.5 8-6.5s8 2.5 8 6.5"/></svg>',
+  benutzer: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20c0-3.6 2.9-6 6.5-6s6.5 2.4 6.5 6"/><path d="M16 4.6a3.5 3.5 0 0 1 0 6.8M18 14.3c2.1.7 3.5 2.8 3.5 5.7"/></svg>',
+  abmelden: '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4"/><path d="M9 16l-4-4 4-4M5 12h11"/></svg>',
+};
+
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+// Dateinamen zum Lesen: „Konformit#U00e4tserkl#U00e4rung“ -> „Konformitätserklärung“ (so kamen
+// die Namen beim Packen an). Nur zum Anzeigen, nie für Links oder Anfragen: dort bleibt der Pfad.
+const dateiLesbar = s => s == null ? s : String(s).replace(/#U([0-9a-fA-F]{4})|#L([0-9a-fA-F]{8})/g, (m, u, l) => {
+  const code = parseInt(u || l, 16);
+  return code > 0x10FFFF || (code >= 0xD800 && code <= 0xDFFF) ? m : String.fromCodePoint(code);
+});
+// Dateiauswahl auf Deutsch statt „Choose File / No file chosen“ des Browsers: ein Knopf
+// („Datei auswählen“) und daneben der Name der gewählten Datei. Das echte <input type="file">
+// liegt unsichtbar (durchsichtig, nicht display:none) genau über dem Knopf: Ein Klick trifft es,
+// mit Tab ist es erreichbar (Enter oder Leertaste öffnet die Auswahl), Bildschirmleser und
+// automatische Tests setzen weiter Dateien darauf. attr: Attribute des Feldes als HTML (id,
+// accept, onchange …); knopf: Text des Knopfes; knopfId: id des sichtbaren Knopfes; name: schon
+// gewählte Datei (nach dem Neuzeichnen); titel: Name des Feldes für Bildschirmleser, wenn kein
+// <label for> darauf zeigt. Gewählt wird über das Feld wie bisher (feld.files, onchange).
+const DATEI_LEER = "Keine Datei ausgewählt";
+function dateiwahl(attr, { knopf = "Datei auswählen", knopfId = "", name = "", titel = "", klasse = "", leise = true } = {}) {
+  return `<span class="dateiwahl ${klasse}"><span class="knopf ${leise ? "leise " : ""}dateiwahl-knopf"${knopfId ? ` id="${knopfId}"` : ""}>${esc(knopf)}<input type="file" ${attr}${titel ? ` aria-label="${esc(titel)}"` : ""}></span><span class="dateiwahl-name${name ? "" : " dateiwahl-leer"}" aria-live="polite">${esc(name || DATEI_LEER)}</span></span>`;
+}
+// Name neben dem Knopf nach dem Feld richten; auch für Module, die feld.files selbst setzen
+function dateiwahlZeigen(feld) {
+  const el = feld?.closest(".dateiwahl")?.querySelector(".dateiwahl-name");
+  if (!el) return;
+  const f = feld.files?.[0];
+  el.textContent = f ? f.name : DATEI_LEER;
+  el.classList.toggle("dateiwahl-leer", !f);
+}
+// nach dem onchange des Feldes selbst (das eine falsche Datei wieder leeren kann)
+document.addEventListener("change", e => { if (e.target.matches?.(".dateiwahl input[type=file]")) dateiwahlZeigen(e.target); });
+const $ = sel => document.querySelector(sel);
+const eingabeAktiv = () => ["INPUT", "TEXTAREA"].includes(document.activeElement?.tagName) && document.activeElement.id !== "suche";
+
+// Freigabe ohne Klick eines Menschen (services/freigabe.automatisch)
+const AUTO_TITEL = "Der Agent hat das Dokument selbst freigegeben: Es lag im eigenen Bestand, und die Vorprüfung hatte nichts zu beanstanden.";
+
+function chip(status, suche_in) {
+  const s = STATUS[status] || { text: status };
+  const extra = status === "suche" && suche_in ? `: ${esc(suche_in)}` : "";
+  const punkt = status === "suche" ? '<span class="punkt"></span>' : "";
+  return `<span class="chip s-${esc(status)}">${punkt}${esc(s.text)}${extra}</span>`;
+}
+
+function toast(text) {
+  const t = $("#toast"); t.textContent = text; t.classList.add("an");
+  clearTimeout(toast.z); toast.z = setTimeout(() => t.classList.remove("an"), 2600);
+}
+
+const SERVER_WEG = "Der ATEX-Agent ist gerade nicht erreichbar. Bitte versuchen Sie es in ein paar Minuten noch einmal.";
+
+async function api(pfad, opt = {}) {
+  const o = { ...opt };
+  if (o.json !== undefined) { o.body = JSON.stringify(o.json); o.headers = { "Content-Type": "application/json" }; delete o.json; }
+  let r;
+  try { r = await fetch(API + pfad, o); }
+  catch (f) { console.error(pfad, f); throw new Error(SERVER_WEG); }
+  $("#api-status").textContent = "";
+  if (!r.ok) {
+    let msg = "";
+    try { const j = await r.json(); msg = j.fehler || j.error || ""; } catch {}
+    // ohne Satz vom Backend nie den Rohtext des Servers („Bad Gateway“) zeigen
+    if (!msg) msg = r.status >= 500 ? SERVER_WEG : "Das hat nicht geklappt. Bitte laden Sie die Seite neu und versuchen Sie es noch einmal.";
+    console.warn(pfad, r.status, msg);
+    // status: damit eine Seite „gibt es nicht“ (404) von „nicht erreichbar“ unterscheiden kann
+    throw Object.assign(new Error(msg), { status: r.status });
+  }
+  const typ = r.headers.get("content-type") || "";
+  return typ.includes("json") ? r.json() : r;
+}
+
+// ---------- seitenwechsel: zähler und timer je seite (seiten/README.md, „Seitenwechsel“) ----------
+// route() zählt seitenNr hoch. Wer lädt, merkt sich mit seitenWache() den Stand und zeichnet nach
+// jedem await nur, wenn die Wache noch true sagt: sonst malte die Antwort einer langsamen Anfrage
+// die alte Seite über die neue. Timer einer Seite laufen über seiteIntervall/seiteTimeout und enden
+// beim Verlassen der Seite; ein Takt fällt aus, solange der vorige noch läuft oder der Tab verdeckt ist.
+let seitenNr = 0;
+const seitenTimer = new Set();
+function seitenWache() { const nr = seitenNr; return () => nr === seitenNr; }
+function seiteVerlassen() {
+  seitenNr++;
+  for (const t of seitenTimer) t.stopp();
+  seitenTimer.clear();
+}
+function seiteIntervall(fn, ms, wache = seitenWache()) {
+  if (!wache()) return null;  // die Seite ist schon verlassen: nichts mehr anmelden
+  let laeuft = false;
+  const takt = async () => {
+    if (!wache() || laeuft || document.hidden) return;
+    laeuft = true;
+    try { await fn(); } catch (f) { console.error(f); } finally { laeuft = false; }
+  };
+  const id = setInterval(takt, ms);
+  const t = { stopp: () => clearInterval(id), takt };
+  seitenTimer.add(t);
+  return t;
+}
+function seiteTimeout(fn, ms, wache = seitenWache()) {
+  if (!wache()) return null;
+  const t = { stopp: () => clearTimeout(id) };
+  const id = setTimeout(() => { seitenTimer.delete(t); if (wache()) fn(); }, ms);
+  seitenTimer.add(t);
+  return t;
+}
+// wieder sichtbar: gleich einmal auffrischen statt bis zum nächsten Takt zu warten
+document.addEventListener("visibilitychange", () => { if (!document.hidden) for (const t of seitenTimer) t.takt?.(); });
+
+// ---------- erweiterungen: je funktion eine datei unter seiten/, siehe README.md ----------
+// seiten:  { name, muster: /^#\/…/, vorgang?: true, zeige(m, app) }   eigene seite; mit vorgang ist m[1] die vorgangs-id
+// nav:     { name, href | href(v), text, icon?, vorgang?: true, zahl?(v) } eintrag links, unter "Daten" oder im vorgang
+// vorgang: { titel, zeichne(v, el) }    abschnitt unten auf der vorgangsseite
+// artikel: { titel, zeichne(a, el) }    abschnitt unten auf der artikelseite
+const ERWEITERUNGEN = { seiten: [], nav: [], vorgang: [], artikel: [] };
+// Ausgeblendet, nicht gelöscht: Der Code der Module bleibt, nur Seite, Eintrag links und Abschnitt
+// erscheinen nicht mehr. Zum Wiedereinschalten den Namen (name oder schluessel) hier streichen.
+// ex-liste/listen: EX-Bauteil-Liste · fragen: Fragen im Vorgang · zertifikate: Dokumentenarchiv
+// mit Versionen und Prüfregeln · veraltet: Abschnitt „Veraltete Zertifikate“ · ablauf: „So läuft es“
+// sprachmodelle: Seite „Sprachmodelle“ (die Wahl je Vorgang unter „Einstellungen“ bleibt)
+// sprachen: Seite „Sprachversionen“ (die Sprachen wählt man beim Start des Agenten)
+const AUSGEBLENDET = new Set(["ex-liste", "listen", "Ex-Teil oder nicht?", "fragen", "zertifikate", "veraltet", "ablauf", "sprachmodelle", "sprachen"]);
+// Treffer der Suche oben, die auf eine ausgeblendete Seite zeigen würden
+const zielAusgeblendet = ziel => /^#\/(zertifikate|sprachmodelle)|\/(fragen|ex-liste|sprachen)\b/.test(ziel || "");
+function erweitere(art, eintrag) {
+  if ([eintrag.name, eintrag.schluessel, eintrag.titel].some(x => AUSGEBLENDET.has(x))) return;
+  ERWEITERUNGEN[art].push(eintrag);
+}
+
+// ---------- aufklappen: zustand je <details data-merk="…"> im browser gemerkt ----------
+const AUF = "atex-aufgeklappt";
+function aufZustand() { try { return JSON.parse(localStorage.getItem(AUF) || "{}"); } catch { return {}; } }
+function auf(schl, standard = false) { const z = aufZustand(); return schl in z ? !!z[schl] : standard; }
+function aufSetzen(schl, offen) {
+  const z = aufZustand(); z[schl] = !!offen;
+  try { localStorage.setItem(AUF, JSON.stringify(z)); } catch {}
+}
+const offenAttr = (schl, standard) => auf(schl, standard) ? "open" : "";
+// „toggle“ steigt nicht auf, deshalb in der Einfangphase am Dokument
+document.addEventListener("toggle", e => { const s = e.target?.dataset?.merk; if (s) aufSetzen(s, e.target.open); }, true);
+
+// Abschnitte der Module: ein ruhiger Bereich unter der Tabelle (Vorgang) bzw. unter den Funden
+// (Artikel), je Modul ein aufklappbarer Teil. Ein Modul setzt mit teilMarke(el, text) eine Marke
+// auf den geschlossenen Kopf, wenn dort etwas zu tun ist.
+const BEREICH = { vorgang: "Einstellungen", artikel: "Weitere Möglichkeiten" };
+const teilSchluessel = (art, e) => `${art}-${e.schluessel || e.titel}`;
+function abschnitte(art, daten) {
+  if (!daten || !ERWEITERUNGEN[art].length) return;
+  const rahmen = document.createElement("section");
+  rahmen.className = "karte bereich";
+  rahmen.innerHTML = `<h2>${esc(BEREICH[art])}</h2>`;
+  for (const e of ERWEITERUNGEN[art]) {
+    const schl = teilSchluessel(art, e);
+    const teil = document.createElement("details");
+    teil.className = "teil";
+    teil.id = `teil-${schl}`;
+    teil.dataset.merk = schl;
+    teil.open = auf(schl);
+    teil.innerHTML = `<summary><span class="teil-titel">${esc(e.titel)}</span><span class="teil-kurz"></span><span class="teil-marke" hidden></span></summary>`;
+    const el = document.createElement("div");
+    el.className = "teil-inhalt";
+    teil.appendChild(el);
+    rahmen.appendChild(teil);
+    try { e.zeichne(daten, el); } catch (f) { console.error(e.titel, f); el.textContent = `Der Abschnitt „${e.titel}“ ließ sich nicht anzeigen. Bitte laden Sie die Seite neu.`; }
+  }
+  $("#app").appendChild(rahmen);
+}
+// Marke (z. B. „2 veraltet“) und kurzer Stand neben dem Titel eines Teils; leer blendet aus
+function teilMarke(el, text, farbe = "gelb") {
+  const m = el?.closest("details.teil")?.querySelector(":scope > summary .teil-marke");
+  if (!m) return;
+  m.textContent = text || ""; m.hidden = !text; m.className = `teil-marke ${farbe}`;
+}
+function teilKurz(el, text) {
+  const k = el?.closest("details.teil")?.querySelector(":scope > summary .teil-kurz");
+  if (k) k.textContent = text || "";
+}
+// einen Teil aufklappen und hinscrollen (z. B. „Einstellungen“ neben „Erneut suchen“)
+function teilOeffnen(id) {
+  const t = document.getElementById(`teil-${id}`);
+  if (!t) return;
+  t.open = true;
+  t.scrollIntoView({ behavior: "smooth", block: "start" });
+  t.querySelector("summary")?.focus({ preventScroll: true });
+}
+async function erweiterteSeite(e, m) {
+  const wache = seitenWache();
+  // eine andere Seite: die alte nicht stehen lassen, bis die neue geladen ist (Reiter derselben
+  // Seite, z. B. im Dokumentenarchiv, bleiben stehen und wechseln ohne Flackern)
+  if (zustand.seite !== e.name) $("#app").innerHTML = `<div class="leer">Wird geladen …</div>`;
+  zustand.seite = e.name;
+  if (e.vorgang) {
+    const vid = +m[1];
+    if (zustand.vid !== vid || !zustand.v) { zustand.vid = vid; zustand.v = null; }
+    let v;
+    try { v = await api(`/api/vorgaenge/${vid}`); }
+    catch (f) { if (wache()) $("#app").innerHTML = `<div class="karte unbelegt">Der Vorgang ließ sich nicht laden. ${esc(f.message)}</div>`; return; }
+    if (!wache()) return;
+    zustand.v = v;
+  } else zustand.v = null;
+  zeichneNav();
+  try { await e.zeige(m, $("#app"), wache); }
+  catch (f) { if (wache()) $("#app").innerHTML = `<div class="karte unbelegt">${esc(f.message)}</div>`; }
+}
+
+// Stand als Balken in den Farben der Gruppen: dieselben Farben wie im Ring der Übersicht und in
+// der Kennzahlzeile des Vorgangs (Befund K1)
+function leiste(zaehler, anzahl) {
+  return `<div class="leiste-balken">${GRUPPEN.map(g => [g, gruppenWert(zaehler, g)]).filter(([, n]) => n).map(([g, n]) =>
+    `<span title="${esc(g.text)}: ${n}" style="width:${100 * n / anzahl}%;background:${g.farbe}"></span>`).join("")}</div>`;
+}
+
+// ---------- einstellungen (nur im browser gespeichert) ----------
+function einstellungen() { try { return JSON.parse(localStorage.getItem("atex-einstellungen") || "{}"); } catch { return {}; } }
+function einstellungSetzen(k, wert) {
+  const e = einstellungen(); e[k] = wert;
+  localStorage.setItem("atex-einstellungen", JSON.stringify(e));
+  einstellungenAnwenden();
+}
+function einstellungenAnwenden() {
+  const e = einstellungen();
+  document.body.classList.toggle("kompakt", !!e.kompakt);
+  zeichneProfil();
+}
+// ---------- anmeldung: wer angemeldet ist, steht in der sitzung des servers ----------
+// wer entscheidet (M3): der server nimmt den namen aus der sitzung, nicht aus der anfrage. die
+// helfer bleiben fuer die module: anwender() ist der anzeigename, sperre()/nameHinweis() sperren
+// schreibende knoepfe fuer die rolle „leser“, mitName(fn) ruft fn(name) nur, wenn schreiben erlaubt ist
+let ich = null;  // {id, login, name, rolle, rolle_text} von /api/auth/ich
+const angemeldet = () => ich;
+const istAdmin = () => ich?.rolle === "admin";
+function anwender() { return ich?.name || ""; }
+const NAME_FEHLT = "Bitte melden Sie sich an.";
+const NUR_LESEN = "Mit Ihrem Zugang können Sie hier nur ansehen.";
+const darfSchreiben = () => !!anwender() && ich.rolle !== "leser";
+const sperrgrund = () => anwender() ? NUR_LESEN : NAME_FEHLT;
+const sperre = () => darfSchreiben() ? "" : `disabled title="${sperrgrund()}"`;
+const nameHinweis = () => darfSchreiben() ? "" : `<span class="namehinweis grau">${sperrgrund()}</span>`;
+function mitName(fn) {
+  if (!darfSchreiben()) return toast(sperrgrund());
+  return fn(anwender());
+}
+function zeichneProfil() {
+  // Leser: alles Schreibende mit der Klasse „nur-schreiben“ ausblenden (Formulare, Hochladen)
+  document.body.classList.toggle("leser", !!ich && !darfSchreiben());
+  $("#profil").innerHTML = ich ? `
+    <div class="avatar" aria-hidden="true">${ICON.person}</div>
+    <div><div class="wer" title="${esc(ich.name)}">${esc(ich.name)}</div><div class="rolle">${esc(ich.rolle_text || "")}</div></div>
+    <button class="icon abmelden" onclick="abmelden()" title="Abmelden" aria-label="Abmelden">${ICON.abmelden}</button>` : "";
+}
+
+// jede antwort 401 (sitzung abgelaufen, abgemeldet) fuehrt zur anmeldung, auch aus den modulen;
+// danach geht es auf derselben seite weiter (der #-pfad bleibt)
+const _fetch = window.fetch.bind(window);
+window.fetch = async (...args) => {
+  const r = await _fetch(...args);
+  const ziel = String(args[0]?.url ?? args[0]);
+  if (r.status === 401 && !ziel.includes("/api/auth/")) {
+    // Ein einzelnes 401 (z. B. vom Dokumentenarchiv) meldet noch niemanden ab: erst fragen, ob
+    // die Anmeldung wirklich weg ist
+    let weg = true;
+    try { weg = (await _fetch(`${API}/api/auth/ich`)).status === 401; } catch {}
+    if (weg) abgemeldet("Ihre Anmeldung ist abgelaufen. Bitte melden Sie sich erneut an.");
+  }
+  return r;
+};
+
+function abgemeldet(grund) {
+  seiteVerlassen();
+  const warAngemeldet = !!ich;
+  ich = null;
+  document.body.classList.remove("startet");
+  if (document.body.classList.contains("abgemeldet")) return;  // schon sichtbar: eingaben behalten
+  document.body.classList.add("abgemeldet");
+  $("#anmeldung").hidden = false;
+  $("#anmelde-grund").textContent = warAngemeldet && grund ? grund : "Bitte melden Sie sich mit Ihrem Zugang an.";
+  $("#an-fehler").textContent = "";
+  $("#an-passwort").value = "";
+  setTimeout(() => ($("#an-login").value ? $("#an-passwort") : $("#an-login")).focus(), 0);
+}
+
+function angemeldetWeiter(daten) {
+  ich = daten;
+  document.body.classList.remove("startet", "abgemeldet");
+  $("#anmeldung").hidden = true;
+  zeichneProfil();
+  route();
+}
+
+async function anmeldungPruefen() {
+  let r;
+  try { r = await _fetch(`${API}/api/auth/ich`); }
+  catch (f) { console.error(f); abgemeldet(); $("#an-fehler").textContent = SERVER_WEG; return; }
+  if (r.ok) angemeldetWeiter(await r.json());
+  else abgemeldet();
+}
+
+$("#anmelde-form").onsubmit = async e => {
+  e.preventDefault();
+  const login = $("#an-login").value.trim(), passwort = $("#an-passwort").value;
+  if (!login || !passwort) { $("#an-fehler").textContent = "Bitte geben Sie Anmeldename und Passwort ein."; return; }
+  $("#an-knopf").disabled = true; $("#an-fehler").textContent = "";
+  try {
+    const r = await _fetch(`${API}/api/auth/login`, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ login, passwort }) });
+    let j = {}; try { j = await r.json(); } catch {}
+    if (!r.ok) { $("#an-fehler").textContent = r.status >= 500 ? SERVER_WEG : (j.fehler || j.error || "Die Anmeldung hat nicht geklappt. Bitte versuchen Sie es noch einmal."); $("#an-passwort").select(); return; }
+    $("#an-passwort").value = "";
+    angemeldetWeiter(j);
+  } catch (f) { console.error(f); $("#an-fehler").textContent = SERVER_WEG; }
+  finally { $("#an-knopf").disabled = false; }
+};
+
+async function abmelden() {
+  try { await _fetch(`${API}/api/auth/logout`, { method: "POST" }); } catch (f) { console.error(f); }
+  $("#app").innerHTML = "";  // nichts vom vorigen benutzer stehen lassen
+  $("#an-login").value = "";
+  abgemeldet();
+}
+
+async function passwortAendern() {
+  const alt = $("#pw-alt").value, neu = $("#pw-neu").value, nochmal = $("#pw-nochmal").value;
+  const fehler = t => { $("#pw-fehler").textContent = t; };
+  if (!alt || !neu) return fehler("Bitte geben Sie Ihr bisheriges und Ihr neues Passwort ein.");
+  if (neu !== nochmal) return fehler("Die beiden neuen Passwörter sind verschieden. Bitte geben Sie das neue Passwort zweimal gleich ein.");
+  fehler("");
+  try {
+    await api("/api/auth/passwort", { method: "POST", json: { alt, neu } });
+    for (const id of ["#pw-alt", "#pw-neu", "#pw-nochmal"]) $(id).value = "";
+    document.activeElement.blur();
+    toast("Ihr Passwort ist geändert. Auf anderen Geräten melden Sie sich bitte neu an.");
+  } catch (e) { fehler(e.message); }
+}
+
+// ---------- seitenleiste + suche ----------
+function zeichneNav() {
+  const s = zustand.seite;
+  const imVorgang = zustand.v && (["vorgang", "artikel", "mails"].includes(s) || ERWEITERUNGEN.seiten.some(e => e.name === s && e.vorgang));
+  const eintrag = n => `<a href="${typeof n.href === "function" ? n.href(zustand.v) : n.href}" class="${s === n.name ? "an" : ""}">${n.icon || ICON.liste} ${esc(n.text)}${n.zahl && n.zahl(zustand.v) ? `<span class="zahl">${n.zahl(zustand.v)}</span>` : ""}</a>`;
+  // sichtbar(): nur fuer bestimmte rollen (z. b. „Benutzer“ nur fuer admins); unten: eigene
+  // gruppe „Admin“ unter den einstellungen
+  const navSichtbar = ERWEITERUNGEN.nav.filter(n => !n.sichtbar || n.sichtbar());
+  const daten = navSichtbar.filter(n => !n.vorgang && !n.unten);
+  const admin = navSichtbar.filter(n => n.unten);
+  const offeneMails = imVorgang ? (zustand.v.zaehler.mail_entwurf || 0) : 0;
+  $("#nav").innerHTML = `
+    <a href="#/" class="${s === "start" ? "an" : ""}">${ICON.raster} Übersicht</a>
+    <a href="#/projekte" class="${s === "projekte" ? "an" : ""}">${ICON.ordner} Projekte</a>
+    ${imVorgang ? `
+      <div class="gruppe" title="${esc(zustand.v.name)}">${esc(zustand.v.name)}</div>
+      <a href="#/v/${zustand.v.id}" class="${s === "vorgang" || s === "artikel" ? "an" : ""}">${ICON.liste} Positionen</a>
+      <a href="#/mails/${zustand.v.id}" class="${s === "mails" ? "an" : ""}">${ICON.mail} E-Mails${offeneMails ? `<span class="zahl">${offeneMails}</span>` : ""}</a>
+      ${ERWEITERUNGEN.nav.filter(n => n.vorgang).map(eintrag).join("")}` : ""}
+    ${daten.length ? `<div class="gruppe">Daten</div>${daten.map(eintrag).join("")}` : ""}
+    <a href="#/einstellungen" class="${s === "einstellungen" ? "an" : ""}" style="margin-top:10px">${ICON.rad} Einstellungen</a>
+    ${admin.length ? `<div class="gruppe">Admin</div>${admin.map(eintrag).join("")}` : ""}`;
+}
+
+// ---------- suche oben: filtert die sichtbare liste und sucht in der ganzen anwendung ----------
+// GET /api/suche?q= (services/globalsuche.py): gruppen mit treffern {titel, kontext, ziel}.
+// Pfeile wählen, Enter öffnet, Esc schließt; „/“ oder Strg+K springen ins Feld.
+const GS = { daten: null, fehler: null, laedt: false, aktiv: -1, timer: null, nr: 0 };
+const gsListe = () => $("#gs-liste");
+const gsTreffer = () => (GS.daten?.gruppen || []).flatMap(g => g.treffer);
+
+$("#suche").oninput = () => {
+  zustand.suche = $("#suche").value.trim().toLowerCase();
+  if (zustand.seite === "start") zeichneStartListe();
+  else if (zustand.seite === "projekte") zeichneProjekte();
+  else if (zustand.seite === "vorgang" && zustand.v) zeichneArtikel();
+  globalSuchen();
+};
+
+function globalSuchen() {
+  clearTimeout(GS.timer);
+  const q = $("#suche").value.trim();
+  if (!q) { GS.daten = null; GS.fehler = null; gsSchliessen(); return; }
+  GS.laedt = true; GS.enterWartet = false;
+  GS.timer = setTimeout(async () => {
+    const nr = ++GS.nr;
+    try {
+      const d = await api(`/api/suche?q=${encodeURIComponent(q)}`);
+      if (nr !== GS.nr) return;  // inzwischen weiter getippt
+      d.gruppen = (d.gruppen || []).map(g => {
+        const treffer = g.treffer.filter(t => !zielAusgeblendet(t.ziel));
+        return treffer.length === g.treffer.length ? g : { ...g, treffer, anzahl: treffer.length };
+      }).filter(g => g.treffer.length || (g.hinweis && g.art !== "archiv"));
+      d.anzahl = d.gruppen.reduce((n, g) => n + g.anzahl, 0);
+      GS.daten = d; GS.fehler = null;
+    } catch (e) {
+      if (nr !== GS.nr) return;
+      GS.daten = null; GS.fehler = e.message;
+    }
+    GS.laedt = false; GS.aktiv = gsTreffer().length ? 0 : -1;
+    if (GS.enterWartet) { GS.enterWartet = false; if (gsTreffer().length) return gsOeffnen(0); }
+    if (document.activeElement === $("#suche")) gsZeichnen();
+  }, 180);
+  if (!gsListe().hidden && !GS.daten) gsZeichnen();
+}
+
+function gsZeichnen() {
+  const el = gsListe(), d = GS.daten, q = $("#suche").value.trim();
+  if (!q) return gsSchliessen();
+  let html;
+  if (GS.fehler) html = `<div class="gs-leer">Die Suche hat gerade nicht geklappt. ${esc(GS.fehler)}</div>`;
+  else if (!d) html = `<div class="gs-leer">Suche läuft …</div>`;
+  else if (d.zu_kurz) html = `<div class="gs-leer">Bitte geben Sie mindestens zwei Buchstaben oder Ziffern ein.</div>`;
+  else if (!d.gruppen.length) html = `<div class="gs-leer">Zu „${esc(q)}“ hat die Suche nichts gefunden. Gesucht wird in Vorgängen, Positionen, Stammdaten und Herstellern. Bindestriche und Leerzeichen dürfen Sie weglassen.</div>`;
+  else {
+    let i = 0;
+    html = d.gruppen.map(g => `<div class="gs-gruppe">${esc(g.titel)} (${g.anzahl})</div>
+      ${g.hinweis ? `<div class="gs-hinweis">${esc(g.hinweis)}</div>` : ""}
+      ${g.treffer.map(t => { const n = i++; return `<a class="gs-treffer ${n === GS.aktiv ? "an" : ""}" role="option" id="gs-t-${n}" aria-selected="${n === GS.aktiv}"
+          href="${esc(t.ziel)}" onmousedown="event.preventDefault()" onclick="gsOeffnen(${n}); return false">
+          <div class="t">${esc(t.titel)}</div>${t.kontext ? `<div class="k">${esc(t.kontext)}</div>` : ""}</a>`; }).join("")}
+      ${g.anzahl > g.treffer.length ? `<div class="gs-mehr">${g.anzahl - g.treffer.length} weitere hier nicht gezeigt. Bitte geben Sie mehr vom Suchbegriff ein.</div>` : ""}`).join("")
+      + `<div class="gs-fuss">${d.anzahl === 1 ? "1 Treffer" : `${d.anzahl} Treffer`}. Mit den Pfeiltasten wählen, mit Enter öffnen, mit Esc schließen.</div>`;
+  }
+  el.innerHTML = html;
+  el.hidden = false;
+  $("#suche").setAttribute("aria-expanded", "true");
+  $(`#gs-t-${GS.aktiv}`)?.scrollIntoView({ block: "nearest" });
+}
+
+function gsSchliessen() {
+  gsListe().hidden = true;
+  $("#suche").setAttribute("aria-expanded", "false");
+}
+
+function gsOeffnen(n) {
+  const t = gsTreffer()[n];
+  if (!t) return;
+  gsSchliessen();
+  $("#suche").blur();
+  if (location.hash === t.ziel) route(); else location.hash = t.ziel;
+}
+
+$("#suche").onkeydown = e => {
+  const n = gsTreffer().length;
+  if (e.key === "Escape") { gsSchliessen(); $("#suche").blur(); return; }
+  if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+    if (!n) return;
+    e.preventDefault();
+    if (gsListe().hidden) { gsZeichnen(); return; }
+    GS.aktiv = (GS.aktiv + (e.key === "ArrowDown" ? 1 : n - 1)) % n;
+    gsZeichnen();
+  } else if (e.key === "Enter") {
+    e.preventDefault();
+    if (GS.laedt) { GS.enterWartet = true; return; }  // erst die Treffer zum neuen Text
+    if (n) gsOeffnen(Math.max(GS.aktiv, 0));
+  }
+};
+$("#suche").onfocus = () => { if ($("#suche").value.trim()) gsZeichnen(); };
+$("#suche").onblur = () => setTimeout(gsSchliessen, 120);
+document.addEventListener("keydown", e => {
+  const tippt = ["INPUT", "TEXTAREA", "SELECT"].includes(document.activeElement?.tagName) || document.activeElement?.isContentEditable;
+  if ((e.key === "k" && (e.ctrlKey || e.metaKey)) || (e.key === "/" && !tippt && !e.ctrlKey && !e.metaKey && !e.altKey)) {
+    if (!ich) return;
+    e.preventDefault();
+    $("#suche").focus(); $("#suche").select();
+  }
+});
+
+// ---------- router ----------
+function route() {
+  seiteVerlassen();  // alte Anfragen zeichnen nicht mehr, Timer der alten Seite enden
+  if (!ich) { anmeldungPruefen(); return; }  // erst wissen, wer angemeldet ist
+  zustand.suche = ""; $("#suche").value = "";
+  let m;
+  const e = ERWEITERUNGEN.seiten.find(e => (m = location.hash.match(e.muster)));
+  if (e) erweiterteSeite(e, m);
+  else if ((m = location.hash.match(/^#\/v\/(\d+)\/a\/(\d+)/))) artikelSeite(+m[1], +m[2]);
+  else if ((m = location.hash.match(/^#\/mails\/(\d+)/))) mailSeite(+m[1]);
+  else if ((m = location.hash.match(/^#\/v\/(\d+)/))) vorgangSeite(+m[1]);
+  else if ((m = location.hash.match(/^#\/projekte(?:\/(\d{4}))?/))) projekteSeite(m[1] ? +m[1] : null);
+  else if (location.hash.startsWith("#/einstellungen")) einstellungenSeite();
+  else startSeite();
+}
+window.addEventListener("hashchange", route);
+
+// ---------- gemeinsamer zustand ----------
+const zustand = {
+  seite: "start", vid: null, v: null, filter: "alle", bearbeiten: null, suche: "",
+  aid: null, a: null, fund: null, pdf: null,
+  mails: [], mailGewaehlt: null, projekte: [], jahr: null,
+  logSeit: 0, log: [], notizen: {},
+};
+
+// ---------- uebersicht: hochladen, diagramme, liste ----------
+async function startSeite() {
+  zustand.seite = "start"; zustand.v = null;
+  zeichneNav();
+  $("#app").innerHTML = `
+    <div class="kopfzeile"><div><h1>Übersicht</h1><div class="grau">Ein Vorgang je Auftrag: Sie laden die Stückliste hoch und bekommen am Ende die geprüfte Liste der Ex-Dokumente.</div></div></div>
+    ${darfSchreiben() ? `<div class="karte upload" id="ablage">
+      <div class="upload-text"><strong>Neuer Vorgang</strong><span class="grau">Oder ziehen Sie die Datei hierher.</span></div>
+      <input type="text" id="name" placeholder="Name des Vorgangs, freiwillig" aria-label="Name des Vorgangs, freiwillig">
+      ${dateiwahl('id="datei" accept=".xlsx,.xlsm" title="Stückliste mit den Spalten Pos., Bezeichnung, Hersteller und Hersteller-Artikelnr."',
+        { knopf: "Excel-Datei auswählen", knopfId: "datei-knopf", titel: "Stückliste als Excel-Datei auswählen", leise: false })}
+      <div id="upload-fehler" class="unbelegt" role="alert"></div>
+    </div>` : `<p class="grau" style="margin:0 0 14px;font-size:13px">${esc(NUR_LESEN)} Neue Vorgänge legen Kolleginnen und Kollegen mit Prüfrechten an.</p>`}
+    <details class="karte ablauf-karte" id="ablauf-karte">
+        <summary><h2>So läuft es</h2><span class="grau">Was der Agent tut und was Sie entscheiden</span></summary>
+        <div class="ablauf" role="img" aria-label="Ablauf in acht Schritten: links arbeitet der Agent, rechts entscheidet ein Mensch">
+          <div class="ab-kopf">
+            <span><svg viewBox="0 0 32 32" width="15" height="15" aria-hidden="true"><path d="M16 2.5 27.7 9.25v13.5L16 29.5 4.3 22.75V9.25z" fill="none" stroke="currentColor" stroke-width="3" stroke-linejoin="round"/></svg> Agent</span>
+            <span><svg viewBox="0 0 24 24" width="15" height="15" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><circle cx="12" cy="8" r="4"/><path d="M4 21c0-4.4 3.6-7 8-7s8 2.6 8 7"/></svg> Mensch</span>
+          </div>
+          <div class="ab mensch" data-nr="1"><b>Stückliste hochladen</b><small>die Excel-Datei des Auftrags</small></div>
+          <div class="ab agent" data-nr="2"><b>Angaben prüfen</b><small>Ex-Teile erkennen, Lücken melden</small><span class="rueck">↺ Fehlt etwas, korrigiert der Einkauf.</span></div>
+          <div class="ab agent" data-nr="3"><b>Dokumente suchen</b><small>Datenbank, Dokumentenarchiv, Ähnlichkeitssuche, dann Internet</small></div>
+          <div class="ab agent" data-nr="4"><b>Fund vorprüfen</b><small>Typ und Zone, jede Angabe mit Seite</small></div>
+          <div class="ab mensch" data-nr="5"><b>Prüfen und freigeben</b><small>oder ablehnen, mit Quelle und PDF</small></div>
+          <div class="ab agent" data-nr="6"><b>E-Mail entwerfen</b><small>wenn nichts gefunden oder abgelehnt ist</small></div>
+          <div class="ab mensch" data-nr="7"><b>E-Mail freigeben und senden</b><small>dann kommt die Antwort des Herstellers</small><span class="rueck">↺ weiter bei Schritt 5</span></div>
+          <div class="ab mensch" data-nr="8"><b>Kundenliste ausgeben</b><small>erst wenn alles vollständig ist</small></div>
+        </div>
+        <p class="grau" style="margin:12px 0 0;font-size:12.5px">Die KI ändert nichts. Jede Freigabe trifft ein Mensch.</p>
+    </details>
+    <div id="diagramme"></div>
+    <div class="karte">
+      <h2>Alle Vorgänge</h2>
+      <div id="liste" class="leer">Wird geladen …</div>
+    </div>`;
+
+  // „So läuft es“: beim ersten Besuch offen, danach so, wie Sie es zuletzt gelassen haben
+  const ablauf = $("#ablauf-karte");
+  if (AUSGEBLENDET.has("ablauf")) ablauf.remove();
+  let ablaufOffen = null;
+  try { ablaufOffen = localStorage.getItem("atex-ablauf"); } catch {}
+  ablauf.open = ablaufOffen === null ? true : ablaufOffen === "1";
+  try { if (ablaufOffen === null) localStorage.setItem("atex-ablauf", "0"); } catch {}
+  // das Öffnen eben löst selbst ein „toggle“ aus (später, als eigene Aufgabe): das nicht merken
+  let ersterToggle = ablauf.open;
+  ablauf.ontoggle = () => {
+    if (ersterToggle) { ersterToggle = false; return; }
+    try { localStorage.setItem("atex-ablauf", ablauf.open ? "1" : "0"); } catch {}
+  };
+
+  const ablage = $("#ablage"), datei = $("#datei");
+  if (ablage) {
+    ablage.ondragover = e => { e.preventDefault(); ablage.classList.add("drueber"); };
+    ablage.ondragleave = e => { if (!ablage.contains(e.relatedTarget)) ablage.classList.remove("drueber"); };
+    ablage.ondrop = e => { e.preventDefault(); ablage.classList.remove("drueber"); if (e.dataTransfer.files[0]) hochladen(e.dataTransfer.files[0]); };
+    datei.onchange = () => datei.files[0] && hochladen(datei.files[0]);
+  }
+
+  const wache = seitenWache();
+  await ladeProjekte(true);
+  seiteIntervall(() => ladeProjekte(), 4000, wache);
+}
+
+async function hochladen(file) {
+  if (!darfSchreiben()) { $("#upload-fehler").textContent = sperrgrund(); return; }
+  const fd = new FormData();
+  fd.append("datei", file);
+  fd.append("name", $("#name").value);
+  $("#upload-fehler").textContent = "";
+  try {
+    const r = await api("/api/vorgaenge", { method: "POST", body: fd });
+    location.hash = `#/v/${r.id}`;
+  } catch (e) { $("#upload-fehler").textContent = e.message; }
+}
+
+async function ladeProjekte(erstes = false) {
+  if (!erstes && tabelleTippt()) return;  // Feld in einer Tabelle offen: beim nächsten Mal
+  const wache = seitenWache();
+  let liste;
+  try { liste = await api("/api/vorgaenge"); }
+  catch (e) {
+    console.error("Vorgänge nicht geladen:", e);
+    if (wache() && $("#liste")) { $("#liste").innerHTML = `<span class="unbelegt">${SERVER_WEG}</span>`; }
+    return;
+  }
+  if (!wache()) return;  // inzwischen eine andere Seite
+  const geaendert = JSON.stringify(liste) !== JSON.stringify(zustand.projekte);
+  zustand.projekte = liste;
+  if (!erstes && !geaendert) return;
+  if (zustand.seite === "start") { zeichneStartListe(); zeichneDiagramme(); }
+  else if (zustand.seite === "projekte") zeichneProjekte();
+}
+
+// Liste der Vorgänge als Tabelle (tabelle.js): der Name ist änderbar, der Rest abgeleitet.
+// kopf: Überschriften zum Sortieren, mehr: Spalten Maschine und Datei (Projektseite)
+const tabelleTippt = () => !!document.activeElement?.classList?.contains("tg-ed");
+const fortschritt = v => v.anzahl ? Math.round(100 * ((v.zaehler.geprueft || 0) + (v.zaehler.in_db || 0) + (v.zaehler.kein_ex || 0)) / v.anzahl) : 100;
+function vorgangsTabelle(liste, id = "vorgaenge", kopf = {}, mehr = false) {
+  const abgeleitet = "Das ergibt sich aus dem Stand der Positionen und lässt sich nicht von Hand ändern.";
+  return Tabelle.html({
+    id, titel: "Vorgänge", zeilen: liste, name: v => `Vorgang „${v.name}“`,
+    leer: zustand.suche || mehr ? "Kein Vorgang passt zu Ihrer Suche. Ändern Sie die Filter oder setzen Sie sie zurück." : "Noch keine Vorgänge. Laden Sie oben eine Stückliste hoch.",
+    spalten: [
+      { s: "name", titel: "Vorgang", kopfHtml: kopf.name, kopfTitel: "Den Namen können Sie direkt hier ändern.", zeige: w => `<strong>${esc(w)}</strong>` },
+      ...(mehr ? [
+        { s: "maschine", titel: "Maschine", gesperrt: "Die Maschine steht so in der Stückliste und lässt sich hier nicht ändern.", klasse: "grau" },
+        { s: "datei", titel: "Datei", gesperrt: "So hieß die hochgeladene Stückliste. Der Dateiname lässt sich nicht ändern.", klasse: "grau mono", stil: "font-size:12px" },
+      ] : []),
+      { s: "erstellt", titel: "Erstellt", kopfHtml: kopf.erstellt, gesperrt: "Der Zeitpunkt des Hochladens lässt sich nicht ändern.", klasse: "grau", stil: "white-space:nowrap" },
+      { s: "anzahl", titel: "Positionen", kopfHtml: kopf.anzahl, gesperrt: "Die Zahl der Positionen ergibt sich aus der Stückliste." },
+      { s: "fortschritt", titel: "Stand", kopfHtml: kopf.fortschritt, wert: fortschritt, gesperrt: abgeleitet, stil: "width:30%",
+        zeige: (w, v) => `${leiste(v.zaehler, v.anzahl)}<div class="grau" style="font-size:11.5px;margin-top:3px" title="Freigegeben, schon in den Stammdaten geprüft oder kein Ex-Teil">${w} % erledigt</div>` },
+      { s: "offen", titel: "Offen", kopfHtml: kopf.offen, gesperrt: abgeleitet,
+        zeige: (w, v) => v.vollstaendig ? '<span class="chip s-geprueft">vollständig</span>' : esc(w) },
+    ],
+    zusatz: { zelle: v => `<a class="knopf leise" href="#/v/${v.id}" style="padding:3px 10px;white-space:nowrap" title="Vorgang öffnen">Öffnen →</a>` },
+    speichern: async (v, werte, { von }) => {
+      const r = await api(`/api/vorgaenge/${v.id}`, { method: "PATCH", json: { von, name: werte.name } });
+      return r.name !== String(werte.name).trim() ? { hinweis: `Einen Vorgang „${String(werte.name).trim()}“ gibt es schon. Deshalb heißt dieser Vorgang jetzt „${r.name}“.` } : null;
+    },
+    nachher: () => ladeProjekte(true),
+  });
+}
+
+function zeichneStartListe() {
+  if (!$("#liste")) return;
+  let liste = zustand.projekte;
+  if (zustand.suche) liste = liste.filter(v => v.name.toLowerCase().includes(zustand.suche));
+  $("#liste").className = "";
+  $("#liste").innerHTML = vorgangsTabelle(liste, "vorgaenge-start");
+}
+
+
+function zeichneDiagramme() {
+  if (!$("#diagramme")) return;
+  const liste = zustand.projekte;
+  if (!liste.length) { $("#diagramme").innerHTML = ""; return; }
+  const gesamt = {};
+  for (const v of liste) for (const [s, n] of Object.entries(v.zaehler)) gesamt[s] = (gesamt[s] || 0) + n;
+  const teile = GRUPPEN.map(g => ({ ...g, wert: gruppenWert(gesamt, g) })).filter(t => t.wert > 0);
+  const summe = teile.reduce((s, t) => s + t.wert, 0);
+
+  // kleiner Ring neben den Zahlen, eine schmale Zeile; kreisringe per dasharray, 2px luecke.
+  // Die Balken je Vorgang stehen in der Liste darunter (früher doppelt als „Vorgänge im Vergleich“).
+  const R = 30, C = 2 * Math.PI * R;
+  let versatz = 0;
+  const ringe = teile.map(t => {
+    const anteil = t.wert / summe;
+    const strich = Math.max(anteil * C - 2, 1);
+    const ring = `<circle r="${R}" cx="40" cy="40" fill="none" stroke="${t.farbe}" stroke-width="12"
+      stroke-dasharray="${strich} ${C - strich}" stroke-dashoffset="${-versatz}"><title>${esc(t.text)}: ${t.wert}</title></circle>`;
+    versatz += anteil * C;
+    return ring;
+  }).join("");
+
+  $("#diagramme").innerHTML = `<div class="karte standzeile">
+    <div class="donut-halter klein">
+      <svg viewBox="0 0 80 80" width="80" height="80" style="transform:rotate(-90deg)" role="img" aria-label="Stand aller Positionen">${ringe}</svg>
+      <div class="mitte"><div class="zahl">${summe}</div></div>
+    </div>
+    <div><h2>Stand aller Positionen</h2>
+      <div class="standzahlen">${teile.map(t => `<span><i style="background:${t.farbe}"></i><b>${t.wert}</b> ${esc(t.text)}</span>`).join("")}</div></div>
+  </div>`;
+}
+
+// ---------- projekte: jahreskarten als einstieg, darunter alle projekte mit filtern ----------
+const jahrVon = v => { const m = String(v.erstellt).match(/(\d{4})/); return m ? +m[1] : null; };
+// „13.11.2026 14:05“ -> „2026-11-13“ bzw. sortierbar „202611131405“
+const tagVon = v => { const m = String(v.erstellt).match(/(\d{2})\.(\d{2})\.(\d{4})/); return m ? `${m[3]}-${m[2]}-${m[1]}` : ""; };
+const zeitVon = v => { const m = String(v.erstellt).match(/(\d{2})\.(\d{2})\.(\d{4})(?: (\d{2}):(\d{2}))?/); return m ? `${m[3]}${m[2]}${m[1]}${m[4] || "00"}${m[5] || "00"}` : ""; };
+const PROJEKT_STAND = {
+  vollstaendig: ["vollständig", v => v.vollstaendig],
+  offen: ["offen", v => !v.vollstaendig],
+  info_fehlt: ["Angaben fehlen", v => (v.zaehler.info_fehlt || 0) > 0],
+  zu_pruefen: ["zu prüfen", v => (v.zaehler.zu_pruefen || 0) > 0],
+  mails: ["E-Mails offen", v => GRUPPE["g-anfragen"].some(s => (v.zaehler[s] || 0) > 0)],
+  suche: ["Suche läuft", v => v.schritt === "suche"],
+};
+const PROJEKT_SCHRITT = { eingelesen: "Eingelesen", maengel: "Angaben prüfen", suche: "Suche läuft", pruefung: "Prüfung" };
+const PROJEKT_RICHTUNG = { name: ["von Z bis A", "von A bis Z"], erstellt: ["neueste zuerst", "älteste zuerst"],
+  anzahl: ["größte zuerst", "kleinste zuerst"], offen: ["meiste offen zuerst", "wenigste offen zuerst"], fortschritt: ["am weitesten zuerst", "am wenigsten weit zuerst"] };
+const mitZahl = (n, eins, mehr) => `${n} ${n === 1 ? eins : mehr}`;
+const PROJEKT_SPALTE = { name: "Vorgang", erstellt: "Erstellt", anzahl: "Positionen", offen: "Offen", fortschritt: "Stand" };
+const PROJEKT_SORT = {
+  name: (a, b) => a.name.localeCompare(b.name, "de"), erstellt: (a, b) => zeitVon(a).localeCompare(zeitVon(b)),
+  anzahl: (a, b) => a.anzahl - b.anzahl, offen: (a, b) => a.offen - b.offen, fortschritt: (a, b) => fortschritt(a) - fortschritt(b),
+};
+// Filter bleiben im Zustand: über das Neuladen alle 5 s und die Rückkehr aus einem Projekt hinweg
+const projektFilterLeer = () => ({ text: "", stand: "", schritt: "", von: "", bis: "", sort: "erstellt", ab: true });
+const pf = () => zustand.pf || (zustand.pf = projektFilterLeer());
+
+async function projekteSeite(jahr) {
+  zustand.seite = "projekte"; zustand.v = null; zustand.jahr = jahr;
+  zeichneNav();
+  if (pf().text) { zustand.suche = pf().text.toLowerCase(); $("#suche").value = pf().text; }  // route() leert das Suchfeld
+  $("#app").innerHTML = `<div class="leer">Wird geladen …</div>`;
+  const wache = seitenWache();
+  await ladeProjekte(true);
+  seiteIntervall(() => ladeProjekte(), 5000, wache);
+}
+
+function projekteGefiltert() {
+  const f = pf(), q = zustand.suche || "";
+  const liste = zustand.projekte.filter(v =>
+    (zustand.jahr === null || jahrVon(v) === zustand.jahr)
+    && (!q || [v.name, v.maschine, v.datei].join(" ").toLowerCase().includes(q))
+    && (!f.stand || PROJEKT_STAND[f.stand]?.[1](v))
+    && (!f.schritt || v.schritt === f.schritt)
+    && (!f.von || tagVon(v) >= f.von) && (!f.bis || tagVon(v) <= f.bis));
+  const vgl = PROJEKT_SORT[f.sort] || PROJEKT_SORT.erstellt;
+  return liste.sort((a, b) => (f.ab ? -1 : 1) * vgl(a, b) || b.id - a.id);
+}
+
+function zeichneProjekte() {
+  const f = pf(), alle = zustand.projekte;
+  f.text = $("#suche").value.trim();
+  const jahre = {};
+  for (const v of alle) {
+    const j = jahrVon(v); if (!j) continue;
+    jahre[j] = jahre[j] || { projekte: 0, positionen: 0, offen: 0 };
+    jahre[j].projekte++; jahre[j].positionen += v.anzahl; jahre[j].offen += v.offen;
+  }
+  const schluessel = Object.keys(jahre).sort((a, b) => b - a);
+  if (!$("#pf-rahmen")) {
+    const wahl = (id, titel, paare) => `<div><label for="pf-${id}">${titel}</label><select id="pf-${id}" onchange="projektFilter('${id}', this.value)">${paare.map(([k, t]) => `<option value="${k}">${esc(t)}</option>`).join("")}</select></div>`;
+    $("#app").innerHTML = `
+      <div class="kopfzeile"><div><h1>Projekte</h1><div class="grau">Hier finden Sie alle Vorgänge. Wählen Sie ein Jahr oder grenzen Sie die Liste mit den Filtern ein.</div></div></div>
+      <div id="pf-rahmen">
+        <div class="jahres-raster" id="pf-jahre"></div>
+        <div class="karte" style="margin-top:16px">
+          <div class="pf-filter">
+            <div class="pf-text"><label for="pf-text">Suchen nach Name, Maschine oder Datei</label>
+              <input type="text" id="pf-text" placeholder="zum Beispiel TM-1" oninput="projektFilter('text', this.value)"></div>
+            <div id="pf-jahr-halter"></div>
+            ${wahl("stand", "Stand", [["", "Alle"], ...Object.entries(PROJEKT_STAND).map(([k, [t]]) => [k, t])])}
+            ${wahl("schritt", "Schritt", [["", "Alle"], ...Object.entries(PROJEKT_SCHRITT)])}
+            <div><label for="pf-von">Hochgeladen ab</label><input type="date" id="pf-von" class="pf-datum" onchange="projektFilter('von', this.value)"></div>
+            <div><label for="pf-bis">Hochgeladen bis</label><input type="date" id="pf-bis" class="pf-datum" onchange="projektFilter('bis', this.value)"></div>
+            <div><button class="leise" onclick="projektFilter('zurueck')">Filter zurücksetzen</button></div>
+          </div>
+          <div class="grau" id="pf-zahl" style="font-size:12.5px;margin:4px 0 8px"></div>
+          <div id="pf-liste"></div>
+        </div>
+      </div>`;
+  }
+  // Felder nur setzen, wenn niemand darin tippt
+  const setze = (id, w) => { const el = $(`#pf-${id}`); if (el && document.activeElement !== el && el.value !== w) el.value = w; };
+  setze("text", f.text); setze("stand", f.stand); setze("schritt", f.schritt); setze("von", f.von); setze("bis", f.bis);
+  $("#pf-jahr-halter").innerHTML = `<label for="pf-jahr">Jahr</label><select id="pf-jahr" onchange="location.hash = this.value ? '#/projekte/' + this.value : '#/projekte'">
+    <option value="">Alle Jahre</option>${schluessel.map(j => `<option value="${j}" ${+j === zustand.jahr ? "selected" : ""}>${j}</option>`).join("")}</select>`;
+  $("#pf-jahre").innerHTML = schluessel.length ? `
+    <div class="jahr-karte ${zustand.jahr === null ? "pf-an" : ""}" onclick="location.hash='#/projekte'">
+      <div class="jahr">Alle</div><div class="grau">${mitZahl(alle.length, "Vorgang", "Vorgänge")}</div></div>
+    ${schluessel.map(j => `
+    <div class="jahr-karte ${+j === zustand.jahr ? "pf-an" : ""}" onclick="location.hash='#/projekte/${j}'">
+      <div class="jahr">${j}</div>
+      <div class="grau">${mitZahl(jahre[j].projekte, "Vorgang", "Vorgänge")} mit ${mitZahl(jahre[j].positionen, "Position", "Positionen")}</div>
+      <div style="margin-top:8px">${jahre[j].offen ? `<span class="chip s-mail_entwurf">${jahre[j].offen} offen</span>` : '<span class="chip s-geprueft">alles vollständig</span>'}</div>
+    </div>`).join("")}` : `<div class="karte leer">Noch keine Vorgänge. Laden Sie auf der Übersicht eine Stückliste hoch.</div>`;
+  const liste = projekteGefiltert();
+  const filterAn = f.text || f.stand || f.schritt || f.von || f.bis || zustand.jahr !== null;
+  $("#pf-zahl").textContent = `${filterAn ? `Sie sehen ${liste.length} von ${mitZahl(alle.length, "Vorgang", "Vorgängen")}` : `Sie sehen alle ${mitZahl(alle.length, "Vorgang", "Vorgänge")}`}, sortiert nach ${PROJEKT_SPALTE[f.sort]}, ${PROJEKT_RICHTUNG[f.sort][f.ab ? 0 : 1]}.`;
+  const kopf = Object.fromEntries(Object.entries(PROJEKT_SPALTE).map(([k, titel]) =>
+    [k, `<button class="pf-sort ${f.sort === k ? "an" : ""}" onclick="projektSort('${k}')" title="Nach ${titel} sortieren. Ein zweiter Klick kehrt die Reihenfolge um.">${titel}${f.sort === k ? (f.ab ? " ▼" : " ▲") : ""}</button>`]));
+  $("#pf-liste").innerHTML = vorgangsTabelle(liste, "vorgaenge-projekte", kopf, true);
+}
+
+function projektFilter(feld, wert) {
+  const f = pf();
+  if (feld === "zurueck") {
+    zustand.pf = projektFilterLeer();
+    zustand.suche = ""; $("#suche").value = "";
+    if (zustand.jahr !== null) { location.hash = "#/projekte"; return; }
+  } else if (feld === "text") {
+    f.text = wert; zustand.suche = wert.trim().toLowerCase(); $("#suche").value = wert;
+  } else f[feld] = wert;
+  zeichneProjekte();
+}
+function projektSort(k) {
+  const f = pf();
+  if (f.sort === k) f.ab = !f.ab; else { f.sort = k; f.ab = k !== "name"; }
+  zeichneProjekte();
+}
+
+// ---------- einstellungen ----------
+function einstellungenSeite() {
+  zustand.seite = "einstellungen"; zustand.v = null;
+  zeichneNav();
+  const e = einstellungen();
+  $("#app").innerHTML = `
+    <div class="kopfzeile"><div><h1>Einstellungen</h1><div class="grau">Ihr Zugang und die Anzeige.</div></div></div>
+    <div class="raster">
+      <div class="karte">
+        <h2>Ihr Zugang</h2>
+        <div class="konto-feld"><span class="grau">Name</span><strong>${esc(ich.name)}</strong></div>
+        <div class="konto-feld"><span class="grau">Anmeldename</span><span class="mono">${esc(ich.login)}</span></div>
+        <div class="konto-feld"><span class="grau">Rolle</span><span>${esc(ich.rolle_text)}</span></div>
+        <p class="grau" style="font-size:12.5px;margin-bottom:0">Dieser Name steht im Protokoll bei allem, was Sie freigeben, ablehnen, korrigieren oder senden. Ändern kann ihn die Administration.</p>
+      </div>
+      <div class="karte">
+        <h2>Passwort ändern</h2>
+        <label for="pw-alt">Bisheriges Passwort</label><input type="password" id="pw-alt" autocomplete="current-password">
+        <label for="pw-neu">Neues Passwort, mindestens 8 Zeichen</label><input type="password" id="pw-neu" autocomplete="new-password">
+        <label for="pw-nochmal">Neues Passwort wiederholen</label><input type="password" id="pw-nochmal" autocomplete="new-password"
+          onkeydown="if (event.key === 'Enter') passwortAendern()">
+        <div class="unbelegt" id="pw-fehler" style="margin-top:8px" role="alert"></div>
+        <button style="margin-top:8px" onclick="passwortAendern()">Passwort ändern</button>
+      </div>
+      <div class="karte">
+        <h2>Anzeige</h2>
+        <label><input type="checkbox" ${e.kompakt ? "checked" : ""}
+          onchange="einstellungSetzen('kompakt', this.checked)"> Kompakte Tabellen (mehr Zeilen pro Bildschirm)</label>
+        <p class="grau" style="font-size:12.5px;margin-bottom:0">Diese Einstellung gilt nur in diesem Browser.</p>
+      </div>
+    </div>`;
+}
+
+const WARNZEICHEN = '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true"><path d="M12 3 2 20h20z" fill="currentColor"/><path d="M12 10v5" stroke="#fff" stroke-width="2.4" stroke-linecap="round"/><circle cx="12" cy="17.6" r="1.3" fill="#fff"/></svg>';
+const SCHRITTE = [
+  ["eingelesen", "Eingelesen"], ["maengel", "Angaben prüfen"], ["suche", "Suche"],
+  ["pruefung", "Prüfung"], ["anfragen", "Anfragen"], ["ausgabe", "Ausgabe"],
+];
+
+// Stufe des Vorgangs für die Schrittleiste. Nach der Suche (schritt „pruefung“ vom Backend) zeigt
+// sie die echte Stufe, auch wenn einzelnen Positionen noch Angaben fehlen; die stehen daneben (K3).
+function aktuellerSchritt(v) {
+  const z = v.zaehler;
+  if (v.vollstaendig) return "ausgabe";
+  if (v.schritt === "suche") return "suche";
+  if (v.schritt === "eingelesen" || v.schritt === "maengel") return z.info_fehlt ? "maengel" : "eingelesen";
+  if (z.zu_pruefen || z.mail_entwurf) return "pruefung";
+  if (z.angefordert || z.erinnert || z.eskaliert) return "anfragen";
+  return "pruefung";
+}
+
+// ---------- vorgang: kennzahlen, liste, ereignisse ----------
+async function vorgangSeite(vid) {
+  Object.assign(zustand, { seite: "vorgang", vid, v: null, filter: "alle", bearbeiten: null, logSeit: 0, log: [], logOffen: new Set(), mails: [], protokollOffen: false });
+  $("#app").innerHTML = `<div class="leer">Wird geladen …</div>`;
+  const wache = seitenWache();
+  aktualisierenKette = Promise.resolve();  // Abrufe der vorigen Seite zeichnen ohnehin nicht mehr
+  await aktualisieren(vid, true);
+  seiteIntervall(() => aktualisieren(vid), 1500, wache);
+}
+
+// nie zwei Abrufe gleichzeitig (Takt und Neuladen nach dem Speichern einer Tabelle): sonst kämen
+// neue Protokolleinträge doppelt an. Die Wache gilt ab dem Aufruf: ein Abruf, der noch in der
+// Kette wartet, während die Seite wechselt, zeichnet nicht mehr.
+let aktualisierenKette = Promise.resolve();
+function aktualisieren(vid, erstes = false) {
+  const wache = seitenWache();
+  return (aktualisierenKette = aktualisierenKette.then(() => aktualisierenEinmal(vid, erstes, wache)));
+}
+async function aktualisierenEinmal(vid, erstes, wache) {
+  const hier = () => wache() && zustand.seite === "vorgang" && zustand.vid === vid;
+  if (!hier()) return;
+  try {
+    const [v, neu, mails] = await Promise.all([
+      api(`/api/vorgaenge/${vid}`),
+      api(`/api/vorgaenge/${vid}/ereignisse?seit=${zustand.logSeit}`),
+      api(`/api/vorgaenge/${vid}/mails`),
+    ]);
+    if (!hier()) return;
+    const geaendert = JSON.stringify(v) !== JSON.stringify(zustand.v) || neu.length || JSON.stringify(mails) !== JSON.stringify(zustand.mails);
+    zustand.v = v; zustand.mails = mails;
+    zustand.log.push(...neu); zustand.logSeit += neu.length;
+    const neueNotizen = await notizenLaden(v);
+    if (!hier()) return;
+    if (erstes || geaendert || neueNotizen) zeichneVorgang();
+  } catch (e) {
+    if (!hier()) return;
+    if (erstes) $("#app").innerHTML = `<div class="karte unbelegt">Der Vorgang ließ sich nicht laden. ${esc(e.message)}</div>`;
+    else $("#api-status").textContent = "Die Verbindung ist unterbrochen …";
+  }
+}
+
+function zeichneVorgang() {
+  const v = zustand.v;
+  // eingaben nicht ueberschreiben, solange jemand tippt (zeilen-bearbeitung, korrekturen)
+  if (eingabeAktiv()) return;
+  zeichneNav();
+  const jetzt = aktuellerSchritt(v);
+  const idx = SCHRITTE.findIndex(s => s[0] === jetzt);
+  const laeuft = v.schritt === "suche";
+  const nieGestartet = v.schritt === "eingelesen" || v.schritt === "maengel";
+  const z = v.zaehler;
+  // nach der Suche: Positionen ohne Angaben neben der Schrittleiste nennen, nicht als Stufe
+  const wartenAufAngaben = idx > 1 && z.info_fehlt;
+  const logPos = $("#log")?.scrollTop || 0;
+
+  $("#app").innerHTML = `
+    <div class="kopfzeile" style="margin-bottom:8px">
+      <div><a href="#/" class="grau" style="text-decoration:none">← Übersicht</a><h1>${esc(v.name)}</h1>
+        <div class="grau">${mitZahl(v.anzahl, "Position", "Positionen")} · erstellt am ${esc(v.erstellt)}</div></div>
+      <div class="rechts">
+        <button class="leise" id="proto-knopf" onclick="protokollAuf()" title="Was der Agent und Sie in diesem Vorgang getan haben" aria-haspopup="dialog">${laeuft ? '<span class="punkt"></span>' : ""}Protokoll</button>
+        <button class="leise" onclick="teilOeffnen('vorgang-einstellungen')" title="Sprachmodell und Websuche für diesen Vorgang">Einstellungen</button>
+        <button onclick="starten()" ${laeuft ? "disabled" : sperre()}>${laeuft ? "Der Agent sucht …" : nieGestartet ? "Agent starten" : "Erneut suchen"}</button>
+        <a class="knopf leise ${v.vollstaendig ? "" : "aus"}" href="${API}/api/vorgaenge/${v.id}/export"
+           title="${v.vollstaendig ? "Die Kundenliste als Excel-Datei herunterladen" : `Das geht erst, wenn alles vollständig ist. Offen ${v.offen === 1 ? "ist noch 1 Position" : `sind noch ${v.offen} Positionen`}.`}">Kundenliste ausgeben</a>
+      </div>
+    </div>
+
+    <div class="schritte knapp">${SCHRITTE.map((s, i) => {
+      const rest = wartenAufAngaben && s[0] === "maengel";
+      // übersprungen: der Vorgang ist weiter, einzelne Positionen warten noch auf Angaben
+      return `<div class="schritt ${rest ? "fertig rest" : i < idx ? "fertig" : i === idx ? "jetzt" : ""}" ${rest ? `title="${esc(mitZahl(z.info_fehlt, "Position wartet", "Positionen warten"))} noch auf Angaben. Die übrigen sind schon weiter. Sie erkennen sie in der Liste am Stand „Angabe fehlt“."` : ""}><span class="n">${rest ? WARNZEICHEN : i + 1}</span>${s[1]}${rest ? `<span class="schritt-warn">${mitZahl(z.info_fehlt, "Position", "Positionen")} noch offen</span>` : ""}</div>`;
+    }).join("")}</div>
+    ${v.vollstaendig ? `<div class="hinweis gruen" style="padding:8px 14px;margin-bottom:8px"><strong>Vollständig.</strong> Alle Ex-Teile haben ein freigegebenes Zertifikat. Sie können die Kundenliste jetzt ausgeben.</div>` : ""}
+
+    <div id="inhalt"></div>
+    <div class="proto-schleier" id="proto" ${zustand.protokollOffen ? "" : "hidden"} onmousedown="if (event.target === this) protokollZu()">
+      <aside class="proto-blatt" role="dialog" aria-modal="true" aria-labelledby="proto-titel">
+        <div class="proto-kopf"><h2 id="proto-titel">Protokoll</h2><button class="leise" id="proto-zu" onclick="protokollZu()">Schließen</button></div>
+        <div class="log-scroll" id="log">${protokollHtml(v)}</div>
+      </aside>
+    </div>`;
+  if ($("#log")) $("#log").scrollTop = logPos;  // beim Neuzeichnen an derselben Stelle bleiben
+
+  zeichneArtikel();
+}
+
+// Kennzahlen als eine schmale Zeile, in den Farben der Gruppen; jede Zahl filtert die Tabelle
+function kennzeileHtml(v) {
+  const g = schl => GRUPPEN.find(x => x.schl === schl);
+  const wert = schl => gruppenWert(v.zaehler, g(schl));
+  const zahl = (filter, n, text, farbe, titel) => `<button class="${zustand.filter === filter ? "an" : ""}" onclick="filtern('${filter}')" title="${esc(titel)}">${farbe ? `<i style="background:${farbe}"></i>` : ""}<b>${n}</b> ${esc(text)}</button>`;
+  return [
+    zahl("alle", v.anzahl, v.anzahl === 1 ? "Position" : "Positionen", "", "Alle Positionen zeigen"),
+    zahl("g-fertig", wert("fertig"), "freigegeben", g("fertig").farbe, "Nur freigegebene Positionen zeigen"),
+    zahl("g-pruefen", wert("pruefen"), "zu prüfen", g("pruefen").farbe, "Nur Positionen zeigen, die Sie prüfen müssen"),
+    wert("angaben") ? zahl("g-angaben", wert("angaben"), wert("angaben") === 1 ? "Angabe fehlt" : "Angaben fehlen", g("angaben").farbe, "Nur Positionen zeigen, denen eine Angabe fehlt") : "",
+    wert("anfragen") ? zahl("g-anfragen", wert("anfragen"), wert("anfragen") === 1 ? "Anfrage" : "Anfragen", g("anfragen").farbe, "Nur Positionen mit E-Mail an den Hersteller zeigen") : "",
+    zahl("g-offen", v.offen, "offen", "", "Alle offenen Positionen zeigen"),
+  ].join("");
+}
+
+// Protokoll: zusammenhängende Einträge einer Position sind eine Zeile (ihr Ergebnis), die
+// Suchschritte davor auf Klick. Zu sehen sind die neuesten Zeilen, der Rest auf Wunsch.
+const PROTOKOLL_KURZ = 15;
+function protokollAuf() { zustand.protokollOffen = true; $("#proto").hidden = false; $("#proto-zu").focus(); }
+function protokollZu() { zustand.protokollOffen = false; if ($("#proto")) $("#proto").hidden = true; $("#proto-knopf")?.focus(); }
+document.addEventListener("keydown", e => { if (e.key === "Escape" && zustand.protokollOffen && zustand.seite === "vorgang") protokollZu(); });
+function protokollGruppen(log) {
+  const gruppen = [];
+  log.forEach((e, i) => {
+    const g = gruppen[gruppen.length - 1];
+    if (e.artikel_id && g && g.artikel_id === e.artikel_id) g.eintraege.push(e);
+    else gruppen.push({ artikel_id: e.artikel_id, nr: i, eintraege: [e] });
+  });
+  return gruppen.reverse();
+}
+function protokollHtml(v) {
+  if (!zustand.log.length) return '<div class="leer" style="padding:12px">Noch nichts. Sobald Sie den Agenten starten, steht hier, was er tut.</div>';
+  const gruppen = protokollGruppen(zustand.log);
+  const alle = auf("vorgang-protokoll-alle");
+  const zeigen = alle ? gruppen : gruppen.slice(0, PROTOKOLL_KURZ);
+  const offen = zustand.logOffen || (zustand.logOffen = new Set());
+  const zeile = g => {
+    const e = g.eintraege[g.eintraege.length - 1], vorher = g.eintraege.slice(0, -1);
+    const schritte = vorher.length ? `<button class="schritte-knopf" onclick="event.stopPropagation();protokollSchritte(${g.nr})" aria-expanded="${offen.has(g.nr)}">${offen.has(g.nr) ? "Suchschritte ausblenden" : vorher.length === 1 ? "1 Suchschritt davor" : `${vorher.length} Suchschritte davor`}</button>
+      ${offen.has(g.nr) ? `<ul class="schritte-liste">${vorher.map(x => `<li>${esc(x.zeit)}: ${esc(x.text)}</li>`).join("")}</ul>` : ""}` : "";
+    return e.artikel_id
+      ? `<div class="ereignis klick" onclick="location.hash='#/v/${v.id}/a/${e.artikel_id}'" title="Position öffnen"><div class="zeit">${esc(e.zeit)}</div>${esc(e.text)}${schritte}</div>`
+      : `<div class="ereignis"><div class="zeit">${esc(e.zeit)}</div>${esc(e.text)}</div>`;
+  };
+  return zeigen.map(zeile).join("")
+    + (gruppen.length > PROTOKOLL_KURZ ? `<button class="leise log-mehr" onclick="protokollAlle()">${alle ? "Nur die neuesten Einträge zeigen" : `Ganzes Protokoll anzeigen (${mitZahl(zustand.log.length, "Eintrag", "Einträge")})`}</button>` : "");
+}
+function protokollAlle() { aufSetzen("vorgang-protokoll-alle", !auf("vorgang-protokoll-alle")); $("#log").innerHTML = protokollHtml(zustand.v); }
+function protokollSchritte(nr) {
+  const offen = zustand.logOffen || (zustand.logOffen = new Set());
+  if (offen.has(nr)) offen.delete(nr); else offen.add(nr);
+  $("#log").innerHTML = protokollHtml(zustand.v);
+}
+
+// fehlende E-Mail-Adressen: eine Zeile, die Hersteller auf Klick
+function kontaktHinweis(v) {
+  if (!v.kontakte_fehlen) return "";
+  const hersteller = {};
+  for (const a of v.artikel.filter(a => a.kontakt_fehlt)) (hersteller[a.hersteller] = hersteller[a.hersteller] || []).push(a);
+  return `<details class="hinweis rot knapp" data-merk="vorgang-kontakte" ${offenAttr("vorgang-kontakte")}>
+    <summary><strong>${v.kontakte_fehlen === 1 ? "Ein E-Mail-Entwurf wartet" : `${v.kontakte_fehlen} E-Mail-Entwürfe warten`} auf die Adresse des Herstellers.</strong><span class="anzeigen">anzeigen</span></summary>
+    Ohne Adresse lässt sich nichts senden. ${Object.keys(hersteller).length ? `Es fehlt die Adresse von ${Object.entries(hersteller).map(([h, l]) =>
+      `${esc(h)} (${l.map(a => `<a href="#/v/${v.id}/a/${a.id}">Position ${esc(a.pos)}</a>`).join(", ")})`).join(", ")}.` : ""}
+    <div style="margin-top:6px"><a href="#/stammdaten/hersteller">Adresse in den Stammdaten eintragen</a></div>
+  </details>`;
+}
+
+// grund einer fehlenden angabe: „notiz“ des artikels (fehlende artikelnummer, fehlender einbauort,
+// offene ex-entscheidung …); die liste des vorgangs liefert sie nicht mit, daher aus /api/artikel/<id>
+// neu geholt, sobald sich die zeile aendert (z. b. nach einer korrektur)
+const notizVon = a => a.notiz ?? zustand.notizen[a.id]?.notiz;
+async function notizenLaden(v) {
+  const fehlt = v.artikel.filter(a => a.status === "info_fehlt" && a.notiz === undefined);
+  for (const id of Object.keys(zustand.notizen)) if (!fehlt.some(a => a.id === +id)) delete zustand.notizen[id];
+  const neu = fehlt.filter(a => zustand.notizen[a.id]?.zeile !== JSON.stringify(a));
+  const details = await Promise.all(neu.map(a => api(`/api/artikel/${a.id}`).catch(() => null)));
+  neu.forEach((a, i) => { zustand.notizen[a.id] = { zeile: JSON.stringify(a), notiz: details[i]?.notiz || "" }; });
+  return neu.length > 0;
+}
+
+function maengelHinweis(v) {
+  const fehlt = v.artikel.filter(a => a.status === "info_fehlt");
+  if (!fehlt.length) return "";
+  return `<details class="hinweis rot knapp korrektur" data-merk="vorgang-maengel" ${offenAttr("vorgang-maengel")}>
+    <summary><strong>${fehlt.length === 1 ? "Bei einer Position fehlt eine Angabe." : `Bei ${fehlt.length} Positionen fehlt eine Angabe.`}</strong> <span>Ohne sie kann der Agent nicht suchen.</span><span class="anzeigen">anzeigen</span></summary>
+    ${nameHinweis()}
+    <table><tbody>${fehlt.map(a => `<tr>
+      <td style="width:60px">Pos. ${esc(a.pos)}</td><td>${esc(a.bezeichnung)}<br><span class="grau">${esc(a.hersteller)}</span>
+        <div class="grund">${esc(notizVon(a) || (a.artikelnr ? "Eine Angabe fehlt." : "Die Hersteller-Artikelnummer fehlt."))}</div></td>
+      </tr>`).join("")}
+    </tbody></table>
+    <div style="margin-top:6px;font-size:12.5px">Tragen Sie die fehlenden Angaben direkt in der Tabelle unten ein.
+      <button class="leise" style="padding:2px 10px;font-size:12px" onclick="filtern('info_fehlt')">Nur diese Positionen zeigen</button></div>
+    <div class="zeile" style="margin-top:8px"><button class="leise" onclick="maengelSenden()" ${sperre()}>Mängelliste an den Einkauf senden</button>
+      <span style="font-size:12px">Sie können auch die korrigierte Stückliste als neuen Vorgang hochladen.</span></div>
+  </details>`;
+}
+
+function zeichneArtikel() {
+  const v = zustand.v;
+  if (!$("#inhalt")) return;
+  const filter = ["alle", ...REIHENFOLGE.filter(s => v.zaehler[s])];
+  let liste = v.artikel.filter(a => zustand.filter === "alle"
+    || (GRUPPE[zustand.filter] ? GRUPPE[zustand.filter].includes(a.status) : a.status === zustand.filter));
+  if (zustand.suche) liste = liste.filter(a =>
+    [a.pos, a.bezeichnung, a.hersteller, a.artikelnr, a.profile_no, a.einbauort].join(" ").toLowerCase().includes(zustand.suche));
+  const gf = zustand.filter.startsWith("g-")
+    ? { text: GRUPPEN.find(g => `g-${g.schl}` === zustand.filter)?.text ?? "Offen" } : null;
+  $("#inhalt").innerHTML = `
+    <div class="karte" style="padding:12px">
+      ${positionenTabelle(v, liste)}
+    </div>`;
+}
+
+// Positionen eines Vorgangs als Tabelle (tabelle.js). Gespeichert wird je Zeile über
+// PATCH /api/artikel/<id> (services/korrektur.py: Verlauf, Meldungen, neue Suche), erst nach Bestätigung.
+const POS_FELD = { description: "Bezeichnung", manufacturer: "Hersteller", manufacturer_article_no: "Hersteller-Artikelnr.",
+  profile_no: "PRO.FILE-Nr.", location: "Einbauort", quantity: "Menge" };
+// was eine Korrektur außerdem bewirkt, in Worten für den Bestätigungsdialog (auch für die Module)
+function positionsFolgen(werte) {
+  const felder = Object.keys(werte).filter(f => POS_FELD[f]), t = [];
+  const leer = felder.filter(f => !String(werte[f] ?? "").trim());
+  const und = l => l.length > 1 ? `${l.slice(0, -1).join(", ")} und ${l[l.length - 1]}` : l[0];
+  if (leer.length) t.push(`${und(leer.map(f => POS_FELD[f]))} darf nicht leer sein. Diese Zeile wird deshalb nicht gespeichert.`);
+  const suche = felder.filter(f => !["description", "quantity"].includes(f));
+  if (suche.length) t.push(`Weil sich ${und(suche.map(f => POS_FELD[f]))} ändert, fallen offene Funde und nicht gesendete E-Mail-Entwürfe dieser Position weg. Die Position muss danach neu gesucht werden, zum Beispiel unter „Korrektur“.`);
+  else if (felder.length) t.push("Bezeichnung und Menge lösen keine neue Suche aus. Offene Funde bleiben erhalten.");
+  if (felder.includes("profile_no")) t.push("Mit der neuen PRO.FILE-Nr. gehört die Position danach zu einem anderen Bauteil in den Stammdaten.");
+  if (felder.length) t.push("Die Korrektur steht mit Ihrem Namen im Verlauf. Passt sie zu einer offenen Meldung wie „Der Hersteller fehlt.“, wird diese Meldung abgehakt.");
+  return t;
+}
+const positionSpeichern = (id, werte, { von, notiz }) =>
+  api(`/api/artikel/${id}`, { method: "PATCH", json: { von, ...(notiz ? { note: notiz } : {}), ...werte } });
+
+function positionenTabelle(v, liste) {
+  const waehrendSuche = () => v.schritt === "suche" ? "Während der Agent sucht, lassen sich die Positionen nicht ändern. Bitte warten Sie, bis die Suche fertig ist." : "";
+  const feld = (s, titel, a, mehr = {}) => ({ s, titel, wert: x => x[a], gesperrt: waehrendSuche, ...mehr });
+  return Tabelle.html({
+    id: `positionen-${v.id}`, titel: `Positionen von „${v.name}“`, zeilen: liste, name: a => `Position ${a.pos}`,
+    leer: "In diesem Filter gibt es keine Positionen.",
+    spalten: [
+      { s: "pos", titel: "Pos.", gesperrt: "Die Positionsnummer kennzeichnet die Zeile der Stückliste und lässt sich nicht ändern." },
+      feld("description", "Bezeichnung", "bezeichnung"),
+      feld("manufacturer", "Hersteller", "hersteller"),
+      feld("manufacturer_article_no", "Hersteller-Art.-Nr.", "artikelnr", { klasse: "mono", zeige: w => w ? esc(w) : '<span class="unbelegt">fehlt</span>' }),
+      feld("profile_no", "PRO.FILE-Nr.", "profile_no", { klasse: "mono" }),
+      feld("quantity", "Menge", "menge"),
+      feld("location", "Einbauort", "einbauort"),
+      { s: "status", titel: "Stand", zeige: (w, a) => chip(a.status, a.suche_in)
+          + (a.automatisch ? `<br><span class="marke-klein auto" title="${esc(AUTO_TITEL)}">automatisch freigegeben</span>` : "")
+          + (a.kontakt_fehlt ? `<br><span class="marke-klein" title="Für den Hersteller ist noch keine E-Mail-Adresse hinterlegt.">E-Mail-Adresse fehlt</span>` : "")
+          + (a.deutsch_fehlt ? `<br><span class="marke-klein" title="Die deutsche Fassung der EU-Konformitätserklärung fehlt noch.">deutsche Fassung fehlt</span>` : ""),
+        gesperrt: "Der Stand ergibt sich aus Funden, Freigaben und E-Mails. Sie ändern ihn mit den Knöpfen bei der Position." },
+    ],
+    zusatz: { zelle: a => `<a href="#/v/${v.id}/a/${a.id}" class="knopf leise pos-oeffnen" title="Position öffnen und Funde prüfen">Öffnen<span class="pfeil"> →</span></a>` },
+    rahmenKlasse: "pos-liste",
+    notiz: "Notiz zur Korrektur, falls Sie eine festhalten möchten",
+    folgen: (a, werte) => positionsFolgen(werte),
+    speichern: (a, werte, opt) => positionSpeichern(a.id, werte, opt),
+    nachher: () => aktualisieren(v.id, true),
+  });
+}
+
+// Position auf ihrer eigenen Seite ändern: dieselben Felder und Folgen wie in der Liste
+const POS_WERT = { description: "bezeichnung", manufacturer: "hersteller", manufacturer_article_no: "artikelnr",
+  profile_no: "profile_no", location: "einbauort", quantity: "menge" };
+function positionBearbeiten() {
+  const a = zustand.a;
+  positionDialogZu();
+  const el = document.createElement("div");
+  el.className = "tg-schleier"; el.id = "pos-dialog";
+  el.innerHTML = `<div class="tg-dialog" role="dialog" aria-modal="true" aria-labelledby="pos-titel" style="max-width:620px">
+    <h2 id="pos-titel">Position ${esc(a.pos)} bearbeiten</h2>
+    <div class="pos-form">${Object.entries(POS_FELD).map(([f, titel]) => `<div class="${f === "description" ? "breit" : ""}">
+      <label for="pos-${f}">${esc(titel)}</label><input type="text" id="pos-${f}" data-feld="${f}" value="${esc(a[POS_WERT[f]] ?? "")}" oninput="positionFolgenZeigen()"></div>`).join("")}</div>
+    <div class="pos-folgen" id="pos-folgen" hidden></div>
+    <div id="pos-fehler" class="unbelegt" role="alert" style="margin-top:8px"></div>
+    <div class="zeile" style="margin-top:14px;justify-content:flex-end">
+      <button class="leise" onclick="positionDialogZu()">Abbrechen</button>
+      <button id="pos-speichern" onclick="positionDialogSpeichern()" disabled>Speichern</button>
+    </div></div>`;
+  el.addEventListener("mousedown", ev => { if (ev.target === el) positionDialogZu(); });
+  el.addEventListener("keydown", ev => { if (ev.key === "Escape") positionDialogZu(); });
+  document.body.appendChild(el);
+  $("#pos-description").focus();
+}
+function positionDialogZu() { $("#pos-dialog")?.remove(); }
+function positionGeaendert() {
+  const a = zustand.a, werte = {};
+  for (const feld of document.querySelectorAll("#pos-dialog input[data-feld]")) {
+    const neu = feld.value.trim();
+    if (neu !== String(a[POS_WERT[feld.dataset.feld]] ?? "").trim()) werte[feld.dataset.feld] = neu;
+  }
+  return werte;
+}
+function positionFolgenZeigen() {
+  const werte = positionGeaendert(), folgen = positionsFolgen(werte), el = $("#pos-folgen");
+  el.hidden = !folgen.length;
+  el.innerHTML = folgen.map(t => `<div>${esc(t)}</div>`).join("");
+  $("#pos-speichern").disabled = !Object.keys(werte).length || Object.values(werte).some(w => !w);
+  $("#pos-fehler").textContent = "";
+}
+function positionDialogSpeichern() {
+  const werte = positionGeaendert();
+  if (!Object.keys(werte).length) return positionDialogZu();
+  mitName(async von => {
+    $("#pos-speichern").disabled = true;
+    try {
+      await positionSpeichern(zustand.a.id, werte, { von });
+      positionDialogZu();
+      toast("Die Position ist geändert.");
+      await neuLaden();
+    } catch (e) { if ($("#pos-fehler")) { $("#pos-fehler").textContent = e.message; $("#pos-speichern").disabled = false; } else toast(e.message); }
+  });
+}
+
+function filtern(f) {
+  zustand.filter = f; zustand.bearbeiten = null;
+  if ($(".kennzeile") && zustand.v) $(".kennzeile").innerHTML = kennzeileHtml(zustand.v);
+  zeichneArtikel();
+}
+
+// ---------- artikel: eigene seite fuer die pruefung ----------
+async function artikelSeite(vid, aid) {
+  Object.assign(zustand, { seite: "artikel", vid, aid, a: null, v: null, fund: null, pdf: null, ablehnOffen: false, fundAuf: new Set(), fundHaken: new Set() });
+  $("#app").innerHTML = `<div class="leer">Wird geladen …</div>`;
+  const wache = seitenWache();
+  await artikelLaden(true);
+  seiteIntervall(() => artikelLaden(), 2000, wache);
+}
+
+async function artikelLaden(erstes = false) {
+  if (eingabeAktiv()) return;
+  const wache = seitenWache(), aid = zustand.aid, vid = zustand.vid;
+  const hier = () => wache() && zustand.seite === "artikel" && zustand.aid === aid;
+  try {
+    const [a, v, fa] = await Promise.all([api(`/api/artikel/${aid}`), api(`/api/vorgaenge/${vid}`),
+      api(`/api/artikel/${aid}/fundangaben`).catch(() => null)]);
+    if (!hier()) return;
+    const geaendert = JSON.stringify([a, fa]) !== JSON.stringify([zustand.a, zustand.fundangaben]);
+    zustand.a = a; zustand.v = v; zustand.fundangaben = fa;
+    if (erstes || geaendert) zeichneArtikelSeite();
+  } catch (e) {
+    if (!hier()) return;
+    if (erstes) $("#app").innerHTML = `<div class="karte unbelegt">Die Position ließ sich nicht laden. ${esc(e.message)}</div>`;
+    else $("#api-status").textContent = "Die Verbindung ist unterbrochen …";
+  }
+}
+
+// Die Notiz der Position endet mit dem Satz zur fehlenden E-Mail-Adresse (services/kontakte.py);
+// der steht schon im roten Hinweis darunter, mit Link
+const notizOhneKontakt = a => a.kontakt_fehlt
+  ? String(a.notiz || "").replace(/\s*Für den Hersteller .+? ist noch keine E-Mail-Adresse hinterlegt\.[\s\S]*$/, "").trim()
+  : a.notiz;
+
+function zeichneArtikelSeite() {
+  const a = zustand.a, v = zustand.v;
+  zeichneNav();
+  const pruefbar = a.status === "zu_pruefen";
+  // angekreuzt bleibt nur, worüber noch zu entscheiden ist
+  const haken = fundHaken(), entscheidbar = new Set(a.funde.filter(f => f.status === "vorgeschlagen").map(f => f.id));
+  for (const id of [...haken]) if (!pruefbar || !entscheidbar.has(id)) haken.delete(id);
+  const n = haken.size;
+  const erst = `disabled title="Kreuzen Sie zuerst links den Fund an, um den es geht."`;
+  $("#app").innerHTML = `
+    <div class="kopfzeile">
+      <div><a href="#/v/${v.id}" class="grau" style="text-decoration:none">← ${esc(v.name)}</a>
+        <h1>Position ${esc(a.pos)} · ${esc(a.bezeichnung)}</h1>
+        <div class="grau">${esc(a.hersteller)} · <span class="mono">${esc(a.artikelnr) || "ohne Hersteller-Artikelnummer"}</span> · ${esc(a.einbauort) || "Einbauort unbekannt"} · PRO.FILE-Nr. ${esc(a.profile_no) || "fehlt"}</div></div>
+      <div class="rechts">${chip(a.status, a.suche_in)}
+        ${darfSchreiben() ? `<button class="leise" onclick="positionBearbeiten()" ${v.schritt === "suche" ? `disabled title="Während der Agent sucht, lassen sich die Positionen nicht ändern."` : `title="Bezeichnung, Hersteller, Artikelnummer, PRO.FILE-Nr., Einbauort und Menge ändern"`}>Position bearbeiten</button>` : ""}</div>
+    </div>
+    <div style="margin:8px 0 14px">
+      ${a.freigabe ? (a.freigabe.automatisch
+        ? `<span class="marke-klein auto" title="${esc(AUTO_TITEL)}">automatisch freigegeben</span> <span class="grau" style="font-size:12px">am ${esc(a.freigabe.zeit)}</span>`
+        : `<span class="grau" style="font-size:12px">Freigegeben von ${esc(a.freigabe.von)} am ${esc(a.freigabe.zeit)}.</span>`) : ""}
+      ${notizOhneKontakt(a) ? `<div class="grau" style="font-size:12px;margin-top:4px">${esc(notizOhneKontakt(a))}</div>` : ""}
+    </div>
+    ${a.kontakt_fehlt ? `<div class="hinweis rot">Für den Hersteller ${esc(a.hersteller)} ist noch keine E-Mail-Adresse hinterlegt. Deshalb lässt sich die Anfrage nicht senden. <a href="#/stammdaten/hersteller">Adresse in den Stammdaten eintragen</a></div>` : ""}
+    ${a.deutsch_fehlt ? `<div class="hinweis gelb">Die deutsche Fassung der EU-Konformitätserklärung fehlt noch. Ohne sie ist die Position nicht vollständig.</div>` : ""}
+    ${(a.hinweise || []).length ? `<div class="hinweis" style="background:var(--blau-hell);color:#14457f">${a.hinweise.length === 1 ? esc(a.hinweise[0]) : `<ul>${a.hinweise.map(h => `<li>${esc(h)}</li>`).join("")}</ul>`}</div>` : ""}
+
+    <div class="karte">
+      ${a.funde.length ? `<h2 style="margin-bottom:4px">Funde (${a.funde.length})</h2>${a.gesucht_in ? `<div class="grau" style="font-size:12.5px;margin-bottom:10px">${esc(a.gesucht_in)}</div>` : ""}` : a.status === "kein_ex" ? `<p class="grau" style="margin:0">In Bezeichnung und Artikelnummer gibt es keinen Hinweis auf ein Ex-Teil. Deshalb sucht der Agent für diese Position nicht.</p>` : `<p class="grau" style="margin:0">${a.gesucht_in ? "Der Agent hat noch keinen passenden Fund." : "Noch keine Funde. Starten Sie den Agenten auf der Seite des Vorgangs."}</p>`}
+      ${a.funde.length ? `<div class="legende" title="So sind die Stellen im PDF markiert."><span><i style="background:#ffe033"></i>Typ im PDF</span><span><i style="background:#8ce08c"></i>Angabe belegt</span><span><i style="background:#ffa84d"></i>nur ähnlich</span></div>` : ""}
+      ${a.funde.map(f => fundKarte(f, haken.has(f.id), pruefbar && entscheidbar.has(f.id), a.funde)).join("")}
+
+      ${pruefbar && !darfSchreiben() ? `<p class="grau" style="margin:0">${esc(NUR_LESEN)} Über diesen Fund entscheidet jemand mit Prüfrechten.</p>` : ""}
+      ${pruefbar && darfSchreiben() ? `<div class="entscheid">
+        <div class="zeile">
+          <button onclick="gewaehlteFreigeben(${a.id})" ${!darfSchreiben() ? sperre() : n ? "" : erst}>${n > 1 ? `${n} Funde freigeben` : "Fund freigeben"}</button>
+          <button class="gefahr" onclick="zustand.ablehnOffen = !zustand.ablehnOffen; zeichneArtikelSeite(); $('#ablehn-grund')?.focus()" aria-expanded="${!!zustand.ablehnOffen}" ${!darfSchreiben() ? sperre() : n ? "" : erst}>${n > 1 ? `${n} Funde ablehnen …` : "Fund ablehnen …"}</button>${nameHinweis()}
+          <span class="grau" style="font-size:12px">${n ? `${n === 1 ? "1 Fund ist" : `${n} Funde sind`} angekreuzt.` : "Kreuzen Sie an, welchen Fund Sie freigeben oder ablehnen möchten."}</span></div>
+        ${zustand.ablehnOffen && n ? `<label for="ablehn-grund" style="margin-top:10px">Warum ${n > 1 ? "passen die Funde" : "passt der Fund"} nicht? Der Grund steht dann in der E-Mail an den Hersteller.</label>
+        <div class="zeile"><input type="text" id="ablehn-grund" placeholder="zum Beispiel: Das Zertifikat gilt nicht für diesen Typ." style="flex:1">
+          <button class="gefahr" onclick="gewaehlteAblehnen(${a.id})" ${sperre()}>Ablehnen</button></div>` : ""}</div>` : ""}
+
+      ${a.mail ? `<p style="margin-bottom:0">E-Mail an den Hersteller: <span class="chip s-${MAILCHIP(a.mail.status)}">${esc(MAILSTAND[a.mail.status] || a.mail.status)}</span>
+         <a class="knopf leise" style="margin-left:6px" href="#/mails/${v.id}">E-Mail ansehen</a></p>` : ""}
+    </div>`;
+}
+
+// Ein Fund mit seinen aus dem PDF gelesenen Werten als Tabelle (tabelle.js): solange er
+// unentschieden ist, korrigiert ein Mensch einen falsch gelesenen Wert (PATCH /api/funde/<id>);
+// danach steht „von Hand korrigiert“ mit Name und Zeit statt des Belegs.
+// Schlüssel aus bearbeiten.FUND_FELDER -> Zeilen aus oberflaeche.felder / angaben.felder mit dem Beleg
+const FUND_BELEG = { doc_type: ["Dokumenttyp"], kennzeichnung: ["Kennzeichnung"], zertifikat: ["Zertifikatsnummer"], sprachen: ["Sprachen"],
+  gueltig_bis: ["Gültig bis"], ausstellungsdatum: ["Ausgestellt"], ausgabe: ["Ausgestellt"], richtlinien: ["Richtlinien"],
+  normen: ["Genannte Normen"], stellen: ["Benannte Stelle"], umgebungstemperatur: ["Umgebungstemperatur"], iecex: ["IECEx-Nummer"] };
+// Was eine Korrektur dieses Werts bewirkt (Bestätigungsdialog)
+const FUND_FOLGEN = {
+  doc_type: "Bei der Freigabe kommt diese Dokumentart in die Stammdaten.",
+  kennzeichnung: "Vorprüfung und Belege beziehen sich weiter auf den Wert aus dem PDF. Die Kategorie wird nicht neu berechnet.",
+  zertifikat: "Vorprüfung und Belege beziehen sich weiter auf den Wert aus dem PDF.",
+  gueltig_bis: "Die Vorprüfung rechnet mit dem neuen Datum: Ist es vorbei, warnt sie. Bei der Freigabe kommt das Datum in die Stammdaten, wenn dort noch keines steht.",
+  richtlinien: "Die Vorprüfung rechnet mit den neuen Richtlinien, zum Beispiel ob 2014/34/EU genannt ist.",
+};
+const FUND_GESPERRT = { Typ: "Der Typ kommt aus der Stückliste. Sie ändern ihn in der Tabelle der Positionen.",
+  Kategorie: "Die Kategorie wird aus Kennzeichnung und Einbauort abgeleitet und lässt sich nicht von Hand ändern." };
+// „13.11.2026, 14:05 Uhr“
+const zeitKurz = iso => {
+  if (!iso) return "";
+  const d = new Date(/Z$|[+-]\d\d:?\d\d$/.test(iso) ? iso : iso + "Z");
+  if (isNaN(d)) return iso;
+  return `${d.toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit", year: "numeric" })}, ${d.toLocaleTimeString("de-DE", { hour: "2-digit", minute: "2-digit" })} Uhr`;
+};
+
+function fundZeilen(f) {
+  const felder = Object.entries(f.felder || {});
+  const angaben = zustand.fundangaben?.[f.id];
+  const passend = titel => felder.filter(([k]) => k === titel || k.startsWith(titel + " "));
+  if (!angaben) return felder.map(([k, x]) => ({ id: "b-" + k, titel: k, wert: x.wert ?? "", belege: [[k, x]], nurBeleg: true }));
+  const genutzt = new Set(), zeilen = [];
+  for (const a of angaben.felder) {
+    const belege = (FUND_BELEG[a.schluessel] || [a.titel]).flatMap(passend);
+    belege.forEach(([k]) => genutzt.add(k));
+    zeilen.push({ id: a.schluessel, titel: a.titel, art: a.art === "auswahl" || a.art === "datum" ? a.art : "text",
+      optionen: (a.optionen || []).map(o => [o, DOKUMENTART[o] || o]), leer: a.leer, wert: a.wert ?? "",
+      korrektur: a.korrektur, gelesen: a.gelesen, belege, offen: angaben.offen, liste: !!a.liste });
+  }
+  for (const [k, x] of felder) if (!genutzt.has(k)) zeilen.push({ id: "b-" + k, titel: k, wert: x.wert ?? "", belege: [[k, x]], nurBeleg: true });
+  return zeilen;
+}
+
+// „quelle“ aus oberflaeche.QUELLE als Satzanfang
+const HERKUNFT = { "Ordner des Herstellers": "Aus dem Ordner des Herstellers", "Ähnlichkeitssuche": "Gefunden von der Ähnlichkeitssuche",
+  "Internet": "Aus dem Internet", "von Hand eingefügt": "Von Hand eingefügt", "Antwort des Herstellers": "Antwort des Herstellers",
+  "Datenbank": "Schon geprüft in der Datenbank", "Dokumentenarchiv": "Aus dem Dokumentenarchiv" };
+// Dokumentart und Sprachen erkennt der Agent aus dem ganzen Dokument; sie stehen nie wörtlich
+// darin und gelten deshalb nicht als „unbelegt“ (oberflaeche.felder: abgeleitet, Befund T1)
+const ABGELEITET = new Set(["Dokumenttyp", "Sprachen"]);
+const istAbgeleitet = (k, x) => !!x?.abgeleitet || ABGELEITET.has(k);
+// die Hauptwerte eines Funds; alles andere steht unter „Weitere Angaben“
+const HAUPTWERTE = ["doc_type", "kennzeichnung", "zertifikat", "sprachen", "gueltig_bis"];
+const HAUPT_TITEL = { Dokumenttyp: "doc_type", Kennzeichnung: "kennzeichnung", Zertifikatsnummer: "zertifikat", Sprachen: "sprachen", "Gültig bis": "gueltig_bis" };
+const hauptRang = z => { const i = HAUPTWERTE.indexOf(z.nurBeleg ? HAUPT_TITEL[z.titel] : z.id); return i < 0 ? null : i; };
+const PRUEFUNG_TEXT = { ok: "Vorprüfung ohne Befund", warnung: "Vorprüfung mit Warnung", unklar: "Unklar, bitte genau prüfen" };
+const fundOffen = id => Tabelle.offen(`fund-${id}`) + Tabelle.offen(`fund-${id}-mehr`);
+// wie viele Werte dieser Zeilen ohne Beleg sind (von Hand korrigierte und abgeleitete zählen nicht)
+const unbelegtIn = zeilen => zeilen.filter(z => !z.korrektur).reduce((n, z) => n + z.belege.filter(([k, x]) => !x.beleg && !istAbgeleitet(k, x)).length, 0);
+// Beleg kürzen: an Wortgrenzen, mit Auslassungszeichen, eine Zeile; der ganze Text auf Klick
+function belegKurz(text, max = 90) {
+  let t = String(text || "").replace(/\s+/g, " ").trim(), vorn = "", hinten = "";
+  const leer = t.indexOf(" ");
+  if (t.length > 40 && /^[a-zäöüß]/.test(t) && leer > 0 && leer < 18) { t = t.slice(leer + 1); vorn = "… "; }
+  if (t.length > max) { const schnitt = t.lastIndexOf(" ", max); t = t.slice(0, schnitt > max * 0.6 ? schnitt : max).replace(/[\s,;:.(-]+$/, ""); hinten = " …"; }
+  return vorn + t + hinten;
+}
+function belegZeile(b) {
+  const lang = `Seite ${b.seite}: „${String(b.text || "").replace(/\s+/g, " ").trim()}“`;
+  const kurz = `Seite ${b.seite}: „${belegKurz(b.text)}“`;
+  return kurz === lang ? `<span class="beleg">${esc(lang)}</span>`
+    : `<button type="button" class="beleg-knopf" onclick="this.classList.toggle('offen')" title="Ganzen Beleg zeigen oder wieder kürzen"><span class="kurz">${esc(kurz)}</span><span class="lang">${esc(lang)}</span></button>`;
+}
+
+function fundKarte(f, gewaehlt, pruefbar, alle) {
+  // schon geprüfte Dokumente aus den Stammdaten (id < 0) haben keine eigenen Belege
+  const angaben = zustand.fundangaben?.[f.id];
+  const ERKANNT = '<span class="abgeleitet" title="Das erkennt der Agent aus dem ganzen Dokument. Es steht so nicht wörtlich darin.">vom Agenten erkannt</span>';
+  const belegHtml = z => z.korrektur
+    ? `<span class="chip s-suche">von Hand korrigiert</span> <span class="beleg">von ${esc(z.korrektur.von)} am ${esc(zeitKurz(z.korrektur.zeit))}${z.korrektur.notiz ? `. Grund: ${esc(z.korrektur.notiz)}` : ""}</span>
+       <div class="beleg">${z.gelesen ? `Im PDF gelesen war „${esc(z.id === "doc_type" ? (DOKUMENTART[z.gelesen] || z.gelesen) : z.art === "datum" ? z.gelesen.replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$3.$2.$1") : z.gelesen)}“.` : "Im PDF war dazu nichts gelesen."}</div>`
+    : z.belege.length ? z.belege.map(([k, x]) => `<div>${z.belege.length > 1 && x.wert ? `<span class="mono" style="font-size:12px">${esc(x.wert)}</span>: ` : ""}${x.beleg
+      ? belegZeile(x.beleg) : istAbgeleitet(k, x) ? ERKANNT : f.id < 0 ? '<span class="grau">aus den Stammdaten</span>' : `<span class="unbelegt">nicht im PDF belegt</span>`}</div>`).join("")
+    : ["doc_type", "sprachen"].includes(z.id) && z.wert ? ERKANNT
+    : z.wert ? '<span class="unbelegt">nicht im PDF belegt</span>' : '<span class="grau">Im PDF nicht gefunden.</span>';
+  const grund = z => z.nurBeleg ? (f.id < 0 ? "Dieses Dokument ist schon geprüft. Ändern können Sie es unter „Stammdaten“."
+      : FUND_GESPERRT[z.titel.replace(/ \d+$/, "")] || (angaben ? "Dieser Wert ist ein Beleg aus dem PDF und lässt sich nicht ändern." : "Die Werte lassen sich gerade nicht laden. Bitte laden Sie die Seite neu."))
+    : !z.offen ? "Über diesen Fund ist schon entschieden. Gelesene Werte lassen sich nur vorher korrigieren." : "";
+  const zeilen = fundZeilen(f);
+  const haupt = zeilen.filter(z => hauptRang(z) !== null).sort((a, b) => hauptRang(a) - hauptRang(b));
+  const weitere = zeilen.filter(z => hauptRang(z) === null);
+  // „nicht belegt“ dort nennen, wo der Wert steht: oben für die Hauptwerte, sonst am Kopf von „Weitere Angaben“
+  const unbelegtHaupt = f.id < 0 ? 0 : unbelegtIn(haupt);
+  const tabelle = (id, zeilen_) => Tabelle.html({
+    id, titel: `Fund ${f.datei}`, zeilen: zeilen_, name: z => z.titel, hinweis: false,
+    spalten: [
+      { s: "titel", titel: "Angabe", gesperrt: "Das ist die Bezeichnung der Angabe.", still: true, klasse: "grau", stil: "width:150px" },
+      { s: "wert", titel: "Wert", art: z => z.art || "text", optionen: z => z.optionen || [], leer: z => z.leer !== false,
+        gesperrt: grund, zeige: (w, z) => w ? esc(z.art === "auswahl" ? (DOKUMENTART[w] || w) : z.art === "datum" ? String(w).replace(/^(\d{4})-(\d{2})-(\d{2})$/, "$3.$2.$1") : w) : '<span class="grau">–</span>' },
+      { s: "beleg", titel: "Beleg", wert: () => "", zeige: (w, z) => belegHtml(z), gesperrt: "Der Beleg stammt aus dem PDF und lässt sich nicht ändern.", still: true },
+    ],
+    notiz: "Grund der Korrektur, falls Sie einen festhalten möchten",
+    folgen: z => [
+      FUND_FOLGEN[z.id] || "Bei der Freigabe gilt der korrigierte Wert.",
+      z.liste ? "Mehrere Einträge trennen Sie mit einem Semikolon." : "",
+      "Die Korrektur steht mit Ihrem Namen im Protokoll des Vorgangs. Am Fund steht dann „von Hand korrigiert“.",
+    ],
+    speichern: (z, werte, { von, notiz }) => api(`/api/funde/${f.id}`, { method: "PATCH", json: { von, ...(notiz ? { note: notiz } : {}), [z.id]: werte.wert } }),
+    nachher: () => artikelLaden(true),
+  });
+  // Vorprüfung ganz oben im Fund: man sieht sie vor jedem Wert und vor den Knöpfen (Befund U5)
+  const p = f.pruefung;
+  const pArt = p && PRUEFUNG_TEXT[p.ergebnis] ? p.ergebnis : "ohne";
+  const pruefung = p && (p.ergebnis || p.meldung)
+    ? `<div class="fund-pruefung ${pArt}"><strong>${esc(PRUEFUNG_TEXT[p.ergebnis] || "Nicht vorgeprüft")}.</strong>${p.meldung ? ` ${esc(p.meldung)}` : ""}</div>`
+    : `<div class="fund-pruefung ohne">${f.id < 0 ? "Dieses Dokument ist schon in den Stammdaten geprüft. In diesem Vorgang gibt es dazu keine eigene Vorprüfung." : "Der Fund ist noch nicht vorgeprüft."}</div>`;
+  const lokal = f.pfad && String(f.url || "").startsWith("/files/");
+  const links = [
+    lokal && f.id > 0 ? `<a href="${API}${esc(f.url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Das PDF mit den Markierungen in einem neuen Tab öffnen">In neuem Tab</a>
+      <a href="${API}/api/findings/${f.id}/file" target="_blank" rel="noopener" onclick="event.stopPropagation()" title="Das PDF ohne Markierungen, wie es abgelegt ist">Original-PDF</a>` : "",
+    !lokal && f.id > 0 ? '<span class="grau">Die Datei liegt nicht im Ordner der Ex-Dokumente.</span>' : "",
+  ].filter(Boolean).join("");
+  const stand = f.status === "freigegeben" ? (f.automatisch ? "Automatisch freigegeben. " : "Freigegeben. ") : f.status === "abgelehnt" ? "Abgelehnt. " : "";
+  const herkunftText = `${stand}${HERKUNFT[f.quelle] || f.quelle}${f.seite ? `, Fundstelle auf Seite ${f.seite}` : ""}`;
+  const mehrSchl = "fund-weitere-angaben";
+  // Zugeklappt zeigt ein Fund nur, welches Dokument es ist: Datei, Art, Sprachen, Herkunft und das
+  // Ergebnis der Vorprüfung als Marke. Alles Weitere erst nach dem Aufklappen.
+  const auf_ = fundAuf().has(f.id);
+  const MARKE = { ok: "ohne Befund", warnung: "Warnung", unklar: "bitte prüfen", ohne: f.id < 0 ? "schon geprüft" : "nicht vorgeprüft" };
+  const zeichen = pArt === "ok" || (pArt === "ohne" && f.id < 0) ? "✓" : pArt === "ohne" ? "" : WARNZEICHEN;
+  const art = DOKUMENTART[f.doc_type] || f.felder?.Dokumenttyp?.wert || "";
+  const sprachen = f.felder?.Sprachen?.wert || "";
+  const kopf = `<div class="fund-kopf" role="button" tabindex="0" aria-expanded="${auf_}" title="${auf_ ? "Einzelheiten zuklappen" : "Vorprüfung, gelesene Werte und Belege aufklappen"}"
+      onclick="event.stopPropagation();fundKlappen(${f.id})" onkeydown="if (event.key === 'Enter' || event.key === ' ') { event.preventDefault(); fundKlappen(${f.id}); }">
+    ${pruefbar && darfSchreiben() ? `<input type="checkbox" class="fund-haken" ${gewaehlt ? "checked" : ""} onclick="event.stopPropagation()" onkeydown="event.stopPropagation()"
+      onchange="fundAnkreuzen(${f.id}, this.checked)" aria-label="${esc(f.datei)} zum Freigeben oder Ablehnen ankreuzen" title="Ankreuzen, um diesen Fund freizugeben oder abzulehnen">` : ""}
+    <span class="fund-pfeil" aria-hidden="true">${auf_ ? "▾" : "▸"}</span>
+    <span class="fund-name"><strong class="mono">${esc(f.datei)}</strong>
+      <span class="grau">${esc([art, sprachen, `${stand}${HERKUNFT[f.quelle] || f.quelle}`.replace(/\.\s*$/, "")].filter(Boolean).join(" · "))}</span></span>
+    <span class="fund-marke ${pArt}">${zeichen}${esc(MARKE[pArt])}</span>
+    ${f.url ? `<button class="leise" style="padding:2px 10px;font-size:12.5px" onclick="event.stopPropagation();pdfZeigen('${esc(f.url)}')">${zustand.pdf === f.url ? "PDF schließen" : "PDF ansehen"}</button>` : ""}
+  </div>`;
+  const pdf = zustand.pdf === f.url ? `<iframe class="pdf" src="${API}${esc(f.url)}#page=${f.seite || 1}"></iframe>` : "";
+  if (!auf_) return `<div class="fund zu ${gewaehlt ? "gewaehlt" : ""}">${kopf}${pdf}</div>`;
+  return `<div class="fund ${gewaehlt ? "gewaehlt" : ""}">
+    ${kopf}
+    ${pruefung}
+    ${window.herkunftZeile ? herkunftZeile(f, alle, herkunftText) : `<div class="grau" style="font-size:12px">${esc(herkunftText)}.</div>`}
+    ${unbelegtHaupt ? `<div class="unbelegt" style="margin-top:2px">${unbelegtHaupt === 1 ? "Ein Wert unten ist" : `${unbelegtHaupt} Werte unten sind`} nicht im PDF belegt.</div>` : ""}
+    ${links ? `<div class="fund-links zeile">${links}</div>` : ""}
+    <div style="margin-top:8px">${tabelle(`fund-${f.id}`, haupt)}</div>
+    ${weitere.length ? `<details class="mehr-angaben" data-merk="${mehrSchl}" ${offenAttr(mehrSchl)} onclick="event.stopPropagation()"><summary>Weitere Angaben (${weitere.length})${
+      unbelegtIn(weitere) && f.id > 0 ? ` <span class="unbelegt">${unbelegtIn(weitere) === 1 ? "Ein Wert davon ist" : `${unbelegtIn(weitere)} Werte davon sind`} nicht im PDF belegt.</span>` : ""}</summary>
+      ${tabelle(`fund-${f.id}-mehr`, weitere)}</details>` : ""}
+    ${angaben?.offen && darfSchreiben() ? `<div class="tg-tipp">✎ Stimmt ein Wert nicht? Klicken Sie ihn an und tragen Sie den richtigen ein.</div>`
+      : f.status === "freigegeben" && darfSchreiben() ? `<div class="tg-tipp">Dieses Dokument ist freigegeben. Seine Angaben ändern Sie in den <a href="#/stammdaten/dokumente" onclick="event.stopPropagation()">Stammdaten</a>.</div>` : ""}
+    ${zustand.pdf === f.url ? `<iframe class="pdf" src="${API}${esc(f.url)}#page=${f.seite || 1}"></iframe>` : ""}
+  </div>`;
+}
+
+// welche Funde aufgeklappt sind (je Position neu: zugeklappt)
+function fundAuf() { return zustand.fundAuf || (zustand.fundAuf = new Set()); }
+function fundKlappen(id) {
+  const auf_ = fundAuf();
+  if (auf_.has(id) && id > 0 && fundOffen(id)) return toast("Bitte speichern oder verwerfen Sie zuerst Ihre Änderungen an diesem Fund.");
+  if (auf_.has(id)) auf_.delete(id); else auf_.add(id);
+  zeichneArtikelSeite();
+}
+// angekreuzte Funde: über sie entscheiden „Fund freigeben“ und „Fund ablehnen“
+function fundHaken() { return zustand.fundHaken || (zustand.fundHaken = new Set()); }
+function fundAnkreuzen(id, an) {
+  if (an) fundHaken().add(id); else fundHaken().delete(id);
+  document.activeElement?.blur();  // sonst zeichnet die Seite nicht neu (eingabeAktiv)
+  zeichneArtikelSeite();
+}
+const ungespeichert = ids => ids.some(id => fundOffen(id)) && (toast("Bitte speichern oder verwerfen Sie zuerst Ihre Änderungen an den angekreuzten Funden."), true);
+function gewaehlteFreigeben(aid) {
+  const ids = [...fundHaken()];
+  if (!ids.length || ungespeichert(ids)) return;
+  mitName(von => tun(async () => {
+    for (const id of ids) { await api(`/api/artikel/${aid}/freigeben`, { method: "POST", json: { fund_id: id, von } }); fundHaken().delete(id); }
+  }, ids.length === 1 ? "Der Fund ist freigegeben und steht jetzt in der Datenbank." : `${ids.length} Funde sind freigegeben und stehen jetzt in der Datenbank.`));
+}
+function gewaehlteAblehnen(aid) {
+  const ids = [...fundHaken()];
+  if (!ids.length || ungespeichert(ids)) return;
+  const grund = $("#ablehn-grund").value.trim() || "Fund passt nicht zum Artikel";
+  document.activeElement.blur();
+  mitName(von => tun(async () => {
+    for (const id of ids) { await api(`/api/artikel/${aid}/ablehnen`, { method: "POST", json: { grund, von, fund_id: id } }); fundHaken().delete(id); }
+    zustand.ablehnOffen = false;
+  }, ids.length === 1 ? "Der Fund ist abgelehnt." : `${ids.length} Funde sind abgelehnt.`));
+}
+function pdfZeigen(url) { zustand.pdf = zustand.pdf === url ? null : url; zeichneArtikelSeite(); }
+
+// ---------- e-mails: klassisches postfach mit projekt-wechsel links ----------
+async function mailSeite(vid) {
+  Object.assign(zustand, { seite: "mails", vid, v: null, mails: [], mailGewaehlt: null, projekte: [] });
+  $("#app").innerHTML = `<div class="leer">Wird geladen …</div>`;
+  const wache = seitenWache();
+  await mailsLaden(true);
+  seiteIntervall(() => mailsLaden(), 3000, wache);
+}
+
+async function mailsLaden(erstes = false) {
+  if (eingabeAktiv()) return;
+  const wache = seitenWache(), vid = zustand.vid;
+  const hier = () => wache() && zustand.seite === "mails" && zustand.vid === vid;
+  try {
+    const [projekte, v, mails, einst] = await Promise.all([
+      api("/api/vorgaenge"), api(`/api/vorgaenge/${vid}`), api(`/api/vorgaenge/${vid}/mails`),
+      zustand.mailEinst ? zustand.mailEinst : api("/api/mail/einstellungen").catch(() => null),
+    ]);
+    if (!hier()) return;
+    const geaendert = JSON.stringify(mails) !== JSON.stringify(zustand.mails) || JSON.stringify(projekte) !== JSON.stringify(zustand.projekte);
+    zustand.projekte = projekte; zustand.v = v; zustand.mails = mails; zustand.mailEinst = einst;
+    if (zustand.mailGewaehlt === null || !mails.some(m => m.id === zustand.mailGewaehlt)) {
+      zustand.mailGewaehlt = mails[0]?.id ?? null;
+    }
+    if (erstes || geaendert) zeichnePostfach();
+  } catch (e) {
+    if (!hier()) return;
+    if (erstes) $("#app").innerHTML = `<div class="karte unbelegt">Die E-Mails ließen sich nicht laden. ${esc(e.message)}</div>`;
+    else $("#api-status").textContent = "Die Verbindung ist unterbrochen …";
+  }
+}
+
+// Stand einer E-Mail in Worten (der Chip zeigt das Wort aus dem Vertrag)
+const MAILSTAND = { entwurf: "Entwurf", gesendet: "gesendet", erinnert: "erinnert", eskaliert: "eskaliert" };
+const ADRESSE_EINTRAGEN = `<a href="#/stammdaten/hersteller">Adresse in den Stammdaten eintragen</a>`;
+
+function zeichnePostfach() {
+  const v = zustand.v, mails = zustand.mails;
+  zeichneNav();
+  const artikel = Object.fromEntries(v.artikel.map(a => [a.id, a]));
+  const einst = zustand.mailEinst;
+  const ohneAdresse = mails.filter(m => m.status === "entwurf" && m.kontakt_fehlt).length;
+  const mf = zustand.mailFilter || "alle";
+  const sicht = mails.filter(m => mf === "alle" || m.status === mf);
+  if (!sicht.some(m => m.id === zustand.mailGewaehlt)) zustand.mailGewaehlt = sicht[0]?.id ?? null;
+  const zahl = s => mails.filter(m => m.status === s).length;
+  $("#app").innerHTML = `
+    <div class="kopfzeile">
+      <div><a href="#/v/${v.id}" class="grau" style="text-decoration:none">← ${esc(v.name)}</a><h1>E-Mails an Hersteller</h1>
+        <div class="grau">Jeden Entwurf geben Sie selbst frei. ${esc(einst?.satz || "Wohin die E-Mails in dieser Umgebung gehen, ließ sich gerade nicht feststellen.")}</div></div>
+    </div>
+    ${ohneAdresse ? `<div class="hinweis rot">${ohneAdresse === 1 ? "Für einen Entwurf fehlt" : `Für ${ohneAdresse} Entwürfe fehlt`} die E-Mail-Adresse des Herstellers. Solange sie fehlt, lässt sich der Entwurf nicht senden. ${ADRESSE_EINTRAGEN}</div>` : ""}
+    <div class="filter mailfilter" role="group" aria-label="E-Mails nach Stand filtern">
+      <button class="${mf === "alle" ? "an" : ""}" onclick="mailFiltern('alle')">Alle ${mails.length}</button>
+      ${MAILFILTER.map(([s, text]) => `<button class="${mf === s ? "an" : ""}" onclick="mailFiltern('${s}')">${text} ${zahl(s)}</button>`).join("")}
+    </div>
+    <div class="post">
+      <div class="ordner">
+        <div class="titel">Vorgänge</div>
+        ${zustand.projekte.map(p => `<a href="#/mails/${p.id}" class="${p.id === v.id ? "an" : ""}">
+          <span>${esc(p.name)}</span>${p.zaehler.mail_entwurf ? `<span class="zahl">${p.zaehler.mail_entwurf}</span>` : ""}</a>`).join("")}
+      </div>
+      <div class="briefe">
+        ${sicht.length ? sicht.map(m => {
+          const a = artikel[m.artikel_id] || {};
+          return `<div class="brief ${m.id === zustand.mailGewaehlt ? "an" : ""}" onclick="mailWaehlen(${m.id})">
+            <div class="meta">${esc(m.empfaenger_hersteller || a.hersteller || m.an)}</div>
+            <div class="betreff">${esc(m.betreff)}</div>
+            <div class="meta">Position ${esc(a.pos)} · ${esc(a.bezeichnung)}${m.gesendet ? ` · ${esc(m.gesendet)}` : ""}</div>
+            ${m.status === "entwurf" && m.kontakt_fehlt ? `<span class="marke-klein">E-Mail-Adresse fehlt</span>` : ""}
+          </div>`;
+        }).join("") : mails.length ? `<div class="leer">Keine E-Mail mit diesem Stand.</div>`
+          : `<div class="leer">In diesem Vorgang gibt es noch keine E-Mails. Der Agent entwirft eine, wenn er nichts findet oder Sie einen Fund ablehnen.</div>`}
+      </div>
+      <div class="lesen" id="lesen"></div>
+    </div>`;
+  zeichneMail();
+}
+
+function mailWaehlen(mid) { zustand.mailGewaehlt = mid; zeichnePostfach(); }
+// Filterleiste über der Liste; der Stand steht nicht mehr an jeder E-Mail
+const MAILFILTER = [["entwurf", "Entwurf"], ["gesendet", "Gesendet"], ["erinnert", "Erinnert"], ["eskaliert", "Eskaliert"]];
+function mailFiltern(s) { zustand.mailFilter = s; zeichnePostfach(); }
+
+// „Empfänger: … In dieser Umgebung geht die E-Mail an …“
+function empfaengerZeilen(m) {
+  const einst = zustand.mailEinst, entwurf = m.status === "entwurf";
+  if (m.kontakt_fehlt && entwurf) {
+    return `<div class="feldzeile"><span class="grau">An</span><span><span class="unbelegt">Für diesen Hersteller ist noch keine E-Mail-Adresse hinterlegt.</span> ${ADRESSE_EINTRAGEN}</span></div>`;
+  }
+  const an = m.empfaenger_hersteller || m.an;
+  const wohin = m.versand_an || m.an;
+  const umgeleitet = wohin && an && wohin !== an;
+  const testpostfach = einst?.versand === "testpostfach";
+  const satz = !entwurf
+    ? (umgeleitet ? `Gesendet wurde sie an ${wohin}${testpostfach ? " im Test-Postfach" : ""}.` : testpostfach ? "Sie liegt im Test-Postfach." : "")
+    : umgeleitet ? `In dieser Umgebung geht die E-Mail an ${testpostfach ? "das Test-Postfach" : "die Testadresse"} ${wohin}.`
+    : testpostfach ? "In dieser Umgebung landet die E-Mail im Test-Postfach." : "";
+  return `<div class="feldzeile"><span class="grau">An</span><span>${esc(an)}${satz ? `<div class="grau" style="font-size:12px">${esc(satz)}</div>` : ""}</span></div>`;
+}
+
+function zeichneMail() {
+  const m = zustand.mails.find(x => x.id === zustand.mailGewaehlt);
+  if (!m) { $("#lesen").innerHTML = `<div class="leer">Wählen Sie links eine E-Mail aus.</div>`; return; }
+  const a = zustand.v.artikel.find(x => x.id === m.artikel_id) || {};
+  const entwurf = m.status === "entwurf";
+  const gesperrt = entwurf && m.kontakt_fehlt;
+  $("#lesen").innerHTML = `
+    <div class="kopf">
+      <div class="zeile"><strong>${entwurf ? "Entwurf" : "Gesendete E-Mail"}</strong></div>
+      ${empfaengerZeilen(m)}
+      ${entwurf ? `<label for="betreff-${m.id}">Betreff</label><input type="text" id="betreff-${m.id}" value="${esc(m.betreff)}" ${darfSchreiben() ? "" : "readonly"}>`
+      : `<div class="feldzeile"><span class="grau">Betreff</span><span><strong>${esc(m.betreff)}</strong></span></div>
+        ${m.gesendet ? `<div class="feldzeile"><span class="grau">Gesendet</span><span>${esc(m.gesendet)}</span></div>` : ""}
+        ${m.erinnert ? `<div class="feldzeile"><span class="grau">Erinnert</span><span>${esc(m.erinnert)}</span></div>` : ""}`}
+      <div class="feldzeile" style="margin-top:4px"><span class="grau">Grund</span><span class="grau">${esc(m.grund)} Es geht um <a href="#/v/${zustand.vid}/a/${m.artikel_id}">Position ${esc(a.pos)}, ${esc(a.bezeichnung)}</a>.</span></div>
+    </div>
+    ${entwurf ? `
+      <label for="text-${m.id}">Text</label><textarea id="text-${m.id}" ${darfSchreiben() ? "" : "readonly"}>${esc(m.text)}</textarea>
+      <div class="zeile" style="margin-top:10px">
+        <button onclick="mailSenden(${m.id})" ${gesperrt ? `disabled title="Ohne E-Mail-Adresse des Herstellers lässt sich die E-Mail nicht senden."` : sperre()}>E-Mail freigeben und senden</button>
+        <button class="leise" onclick="mailSpeichern(${m.id})" ${sperre()}>Entwurf speichern</button>${nameHinweis()}</div>
+      ${gesperrt ? `<div class="unbelegt" style="margin-top:8px">Senden geht erst, wenn die E-Mail-Adresse des Herstellers hinterlegt ist. ${ADRESSE_EINTRAGEN}</div>` : ""}`
+    : `<pre>${esc(m.text)}</pre>
+      ${m.status !== "eskaliert" && a.status !== "zu_pruefen" && a.status !== "geprueft" ? `<div class="zeile nur-schreiben" style="margin-top:16px;border-top:1px solid var(--linie);padding-top:12px">
+        <label for="antwort-${m.id}" style="margin:0">Antwort des Herstellers als PDF</label>${dateiwahl(`id="antwort-${m.id}" accept=".pdf"`)}
+        <button class="leise" onclick="antwortEinfuegen(${m.id}, ${m.artikel_id})" ${sperre()}>Antwort einfügen</button>
+        <button class="leise" onclick="erinnern(${m.id})" title="Die Frist zählt hier nicht. Der Schritt geschieht sofort." ${sperre()}>${m.erinnert ? "An den Einkauf eskalieren" : "Erinnerung senden"}</button>${nameHinweis()}</div>` : ""}`}`;
+}
+
+async function testMailSenden() {
+  try {
+    const r = await api("/api/mail/test", { method: "POST", json: {} });
+    toast(r.text);
+  } catch (e) { toast(e.message); }
+}
+
+// ---------- aktionen ----------
+async function neuLaden() {
+  if (zustand.seite === "artikel") await artikelLaden(true);
+  else if (zustand.seite === "mails") await mailsLaden(true);
+  else if (zustand.seite === "vorgang") await aktualisieren(zustand.vid, true);
+  else await ladeProjekte(true);
+}
+
+// eine Aktion: die Meldung kommt immer, neu geladen wird nur, wenn die Seite noch dieselbe ist
+async function tun(fn, ok) {
+  const wache = seitenWache();
+  try { await fn(); if (ok) toast(ok); if (wache()) await neuLaden(); }
+  catch (e) { toast(e.message); }
+}
+// Vor dem Start: welche Sprachen braucht dieser Vorgang? Nur sie sucht der Agent.
+function starten() {
+  const s = zustand.v?.sprachen || { moeglich: [], gewaehlt: [] };
+  startDialogZu();
+  const el = document.createElement("div");
+  el.className = "tg-schleier"; el.id = "start-dialog";
+  el.innerHTML = `<div class="tg-dialog sprachwahl" role="dialog" aria-modal="true" aria-labelledby="start-titel" style="max-width:460px">
+    <h2 id="start-titel">In welchen Sprachen brauchen Sie die Dokumente?</h2>
+    <p class="grau" style="margin:0 0 6px;font-size:13px">Der Agent sucht nur Dokumente in den Sprachen, die Sie hier ankreuzen.</p>
+    ${s.moeglich.map(x => `<label><input type="checkbox" value="${esc(x.kuerzel)}" ${s.gewaehlt.includes(x.kuerzel) ? "checked" : ""}> ${esc(x.name)}</label>`).join("")}
+    <div id="start-fehler" class="unbelegt" role="alert"></div>
+    <div class="zeile" style="margin-top:14px;justify-content:flex-end">
+      <button class="leise" onclick="startDialogZu()">Abbrechen</button>
+      <button id="start-los" onclick="startMitSprachen()">Agent starten</button>
+    </div></div>`;
+  el.addEventListener("mousedown", ev => { if (ev.target === el) startDialogZu(); });
+  el.addEventListener("keydown", ev => { if (ev.key === "Escape") startDialogZu(); });
+  document.body.appendChild(el);
+  $("#start-los").focus();
+}
+function startDialogZu() { $("#start-dialog")?.remove(); }
+function startMitSprachen() {
+  const sprachen = [...document.querySelectorAll("#start-dialog input:checked")].map(x => x.value);
+  if (!sprachen.length) { $("#start-fehler").textContent = "Bitte kreuzen Sie mindestens eine Sprache an."; return; }
+  startDialogZu();
+  startenMit(sprachen);
+}
+const startenMit = sprachen => tun(() => api(`/api/vorgaenge/${zustand.vid}/start`, { method: "POST", json: { sprachen } }), "Der Agent ist gestartet. Was er tut, zeigt der Knopf „Protokoll“.");
+const maengelSenden = () => mitName(von => tun(() => api(`/api/vorgaenge/${zustand.vid}/maengel/senden`, { method: "POST", json: { von } }), "Die Mängelliste ist an den Einkauf gesendet."));
+const freigeben = (aid, fid) => mitName(von => tun(() => api(`/api/artikel/${aid}/freigeben`, { method: "POST", json: { fund_id: fid, von, doc_type: $("#freigabe-art")?.value || undefined } }), "Der Fund ist freigegeben und steht jetzt in der Datenbank."));
+function ablehnen(aid) {
+  const grund = $("#ablehn-grund").value.trim() || "Fund passt nicht zum Artikel";
+  document.activeElement.blur();
+  mitName(von => tun(() => api(`/api/artikel/${aid}/ablehnen`, { method: "POST", json: { grund, von } }), "Der Fund ist abgelehnt."));
+}
+function zertifikatHochladen(aid, herkunft = "manuell", feld = "#zert-datei") {
+  const f = $(feld)?.files[0];
+  if (!f) return toast("Bitte wählen Sie zuerst ein PDF aus.");
+  mitName(von => {
+    const fd = new FormData(); fd.append("datei", f); fd.append("herkunft", herkunft); fd.append("von", von);
+    return tun(() => api(`/api/artikel/${aid}/zertifikat`, { method: "POST", body: fd }), "Das Dokument ist eingefügt und wartet auf Ihre Prüfung.");
+  });
+}
+const antwortEinfuegen = (mid, aid) => zertifikatHochladen(aid, "hersteller", `#antwort-${mid}`);
+const mailDaten = mid => ({ betreff: $(`#betreff-${mid}`).value, text: $(`#text-${mid}`).value });
+function mailSpeichern(mid) { const d = mailDaten(mid); document.activeElement.blur(); mitName(() => tun(() => api(`/api/mails/${mid}`, { method: "PUT", json: d }), "Der Entwurf ist gespeichert.")); }
+function mailSenden(mid) {
+  const d = mailDaten(mid); document.activeElement.blur();
+  mitName(von => tun(async () => {
+    await api(`/api/mails/${mid}`, { method: "PUT", json: d });
+    const m = await api(`/api/mails/${mid}/senden`, { method: "POST", json: { von } });
+    toast(m.versand_an && m.versand_an !== m.empfaenger_hersteller ? `Die E-Mail ist gesendet, in dieser Umgebung an ${m.versand_an}.` : "Die E-Mail ist gesendet.");
+  }));
+}
+const erinnern = mid => mitName(von => tun(() => api(`/api/mails/${mid}/erinnern`, { method: "POST", json: { von } }), "Erledigt. Was genau geschehen ist, steht im Protokoll des Vorgangs."));
+
+// abschnitte der erweiterungen nach jedem zeichnen der vorgangs- und der artikelseite
+const _zeichneVorgang = zeichneVorgang, _zeichneArtikelSeite = zeichneArtikelSeite;
+zeichneVorgang = function () { if (eingabeAktiv()) return; _zeichneVorgang(); abschnitte("vorgang", zustand.v); };
+zeichneArtikelSeite = function () { if (eingabeAktiv()) return; _zeichneArtikelSeite(); abschnitte("artikel", zustand.a); };
+</script>
+<script src="seiten/benutzer.js"></script>
+<script src="seiten/ex-liste.js"></script>
+<script src="seiten/korrektur.js"></script>
+<script src="seiten/artikel.js"></script>
+<script src="seiten/quellen.js"></script>
+<script src="seiten/stammdaten.js"></script>
+<script src="seiten/zertifikatsserver.js"></script>
+<script src="seiten/modelle.js"></script>
+<script>
+einstellungenAnwenden();
+route();
+</script>
+</body>
+</html>
